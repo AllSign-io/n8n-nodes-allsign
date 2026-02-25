@@ -1,6 +1,6 @@
 {
 	"name": "n8n-nodes-allsign",
-	"version": "1.0.0",
+	"version": "0.1.0",
 	"description": "n8n community node for AllSign - Electronic signature, document management, biometric signing. Firma electrónica, contratos, documentos, NOM-151, FEA, eIDAS, biométrica, firmantes.",
 	"license": "MIT",
 	"homepage": "https://allsign.io",

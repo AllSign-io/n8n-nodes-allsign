@@ -201,9 +201,185 @@ export class Allsign implements INodeType {
 								required: true,
 								description: 'Email address of the signer',
 							},
+							{
+								displayName: 'WhatsApp',
+								name: 'whatsapp',
+								type: 'string',
+								default: '',
+								placeholder: '+525512345678',
+								description: 'WhatsApp number with country code (e.g. +525512345678). Required if Send by WhatsApp is enabled.',
+							},
 						],
 					},
 				],
+			},
+
+			// ====== SIGNATURE FIELDS ======
+			{
+				displayName: 'Signature Fields',
+				name: 'signatureFields',
+				type: 'fixedCollection',
+				typeOptions: {
+					multipleValues: true,
+				},
+				default: {},
+				placeholder: 'Add Signature Field',
+				description: 'Define where signatures should be placed on the document. If empty, signers will need to place fields manually.',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+						operation: ['createAndSend'],
+					},
+				},
+				options: [
+					{
+						name: 'fieldValues',
+						displayName: 'Field',
+						values: [
+							{
+								displayName: 'Signer Email',
+								name: 'participantEmail',
+								type: 'string',
+								default: '',
+								required: true,
+								placeholder: 'name@email.com',
+								description: 'Email of the signer this field belongs to (must match a signer email above)',
+							},
+							{
+								displayName: 'Placement Mode',
+								name: 'placementMode',
+								type: 'options',
+								default: 'coordinates',
+								options: [
+									{
+										name: 'Coordinates (X, Y)',
+										value: 'coordinates',
+										description: 'Place field at specific X, Y coordinates on a page',
+									},
+									{
+										name: 'Anchor Text',
+										value: 'anchor',
+										description: 'Place field where a specific text is found in the PDF',
+									},
+								],
+							},
+							{
+								displayName: 'X Position',
+								name: 'x',
+								type: 'number',
+								default: 100,
+								description: 'Horizontal position in points from left edge of page',
+								displayOptions: {
+									show: {
+										placementMode: ['coordinates'],
+									},
+								},
+							},
+							{
+								displayName: 'Y Position',
+								name: 'y',
+								type: 'number',
+								default: 500,
+								description: 'Vertical position in points from top edge of page',
+								displayOptions: {
+									show: {
+										placementMode: ['coordinates'],
+									},
+								},
+							},
+							{
+								displayName: 'Page Number',
+								name: 'pageNumber',
+								type: 'number',
+								default: 1,
+								typeOptions: {
+									minValue: 1,
+								},
+								description: 'Page where the signature field should be placed (starts at 1)',
+								displayOptions: {
+									show: {
+										placementMode: ['coordinates'],
+									},
+								},
+							},
+							{
+								displayName: 'All Pages',
+								name: 'includeInAllPages',
+								type: 'boolean',
+								default: false,
+								description: 'Whether to place this field on every page of the document',
+								displayOptions: {
+									show: {
+										placementMode: ['coordinates'],
+									},
+								},
+							},
+							{
+								displayName: 'Anchor Text',
+								name: 'anchorString',
+								type: 'string',
+								default: '',
+								placeholder: 'e.g. Firma del Cliente',
+								description: 'Text to search for in the PDF — the signature field will be placed where this text appears',
+								displayOptions: {
+									show: {
+										placementMode: ['anchor'],
+									},
+								},
+							},
+							{
+								displayName: 'Height',
+								name: 'height',
+								type: 'number',
+								default: 100,
+								description: 'Height of the signature field in points. Width is auto-calculated (2:1 ratio).',
+							},
+						],
+					},
+				],
+			},
+
+			// ====== DELIVERY OPTIONS ======
+			{
+				displayName: 'Send Invitations',
+				name: 'sendInvitations',
+				type: 'boolean',
+				default: true,
+				description: 'Whether to send signing invitations to participants after creating the document',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+						operation: ['createAndSend'],
+					},
+				},
+			},
+			{
+				displayName: 'Send by Email',
+				name: 'sendByEmail',
+				type: 'boolean',
+				default: true,
+				description: 'Whether to send the invitation via email',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+						operation: ['createAndSend'],
+						sendInvitations: [true],
+					},
+				},
+			},
+			{
+				displayName: 'Send by WhatsApp',
+				name: 'sendByWhatsapp',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to send the invitation via WhatsApp. Requires WhatsApp number on each signer.',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+						operation: ['createAndSend'],
+						sendInvitations: [true],
+					},
+				},
 			},
 
 			// ====== SIGNATURE OPTIONS ======
@@ -364,6 +540,7 @@ export class Allsign implements INodeType {
 						const signersData = this.getNodeParameter('signers.signerValues', i, []) as Array<{
 							name: string;
 							email: string;
+							whatsapp?: string;
 						}>;
 						const verifyAutografa = this.getNodeParameter('verifyAutografa', i, false) as boolean;
 						const verifyFea = this.getNodeParameter('verifyFea', i, false) as boolean;
@@ -371,6 +548,27 @@ export class Allsign implements INodeType {
 						const verifyVideo = this.getNodeParameter('verifyVideo', i, false) as boolean;
 						const verifyConfirmName = this.getNodeParameter('verifyConfirmName', i, false) as boolean;
 						const verifyIdentity = this.getNodeParameter('verifyIdentity', i, false) as boolean;
+
+						// Delivery options
+						const sendInvitations = this.getNodeParameter('sendInvitations', i, true) as boolean;
+						const sendByEmail = sendInvitations
+							? (this.getNodeParameter('sendByEmail', i, true) as boolean)
+							: false;
+						const sendByWhatsapp = sendInvitations
+							? (this.getNodeParameter('sendByWhatsapp', i, false) as boolean)
+							: false;
+
+						// Signature fields
+						const fieldsData = this.getNodeParameter('signatureFields.fieldValues', i, []) as Array<{
+							participantEmail: string;
+							placementMode: string;
+							x?: number;
+							y?: number;
+							pageNumber?: number;
+							includeInAllPages?: boolean;
+							anchorString?: string;
+							height?: number;
+						}>;
 
 						// Get file as base64
 						let fileBase64: string;
@@ -418,38 +616,109 @@ export class Allsign implements INodeType {
 							if (verifyIdScan) signatureValidation.ai_verification = true;
 						}
 
-						// Build participants from signers
-						const participants = signersData.map((signer) => ({
-							email: signer.email,
-							name: signer.name,
-						}));
-
-						// Build the body matching DocumentCreateRequestV2 schema
-						const body: Record<string, unknown> = {
-							document: {
-								base64Content: fileBase64,
-								name: fileName.endsWith('.pdf') ? fileName : `${documentName}.pdf`,
-							},
-							participants,
-							signatureValidation,
-							config: {
-								sendInvitations: participants.length > 0,
-								sendByEmail: participants.length > 0,
-								startAtStep: participants.length > 0 ? 3 : 1,
-							},
-						};
-
-
-
-						const response = await this.helpers.httpRequest({
-							method: 'POST',
-							headers: authHeaders,
-							url: `${baseUrl}/v2/documents/`,
-							body,
-							json: true,
+						// Build participants from signers (include whatsapp if provided)
+						const participants = signersData.map((signer) => {
+							const participant: Record<string, string> = {
+								email: signer.email,
+								name: signer.name,
+							};
+							if (signer.whatsapp && signer.whatsapp.trim() !== '') {
+								participant.whatsapp = signer.whatsapp.trim();
+							}
+							return participant;
 						});
 
-						returnData.push({ json: response as IDataObject });
+						// Build signature fields
+						const fields = fieldsData.map((field) => {
+							if (field.placementMode === 'anchor') {
+								return {
+									participantEmail: field.participantEmail,
+									anchorString: field.anchorString || '',
+									height: field.height || 100,
+								};
+							}
+							// Coordinate placement
+							const fieldObj: Record<string, unknown> = {
+								participantEmail: field.participantEmail,
+								position: {
+									x: field.x ?? 100,
+									y: field.y ?? 500,
+								},
+								height: field.height || 100,
+							};
+							if (field.includeInAllPages) {
+								fieldObj.includeInAllPages = true;
+							} else {
+								fieldObj.pageNumber = field.pageNumber || 1;
+							}
+							return fieldObj;
+						});
+
+// Step 1: Create document WITHOUT sending invitations
+// Invitations are sent separately via invite-bulk endpoint
+// which uses the new GuestSession flow with correct WhatsApp template
+const hasParticipants = participants.length > 0;
+const startAtStep = hasParticipants ? 2 : 1;
+
+const body: Record<string, unknown> = {
+document: {
+base64Content: fileBase64,
+name: fileName.endsWith('.pdf') ? fileName : `${documentName}.pdf`,
+},
+participants,
+signatureValidation,
+config: {
+sendInvitations: false,
+sendByEmail: false,
+sendByWhatsapp: false,
+startAtStep,
+},
+};
+
+// Only include fields if any were defined
+if (fields.length > 0) {
+body.fields = fields;
+}
+
+const createResponse = await this.helpers.httpRequest({
+method: 'POST',
+headers: authHeaders,
+url: `${baseUrl}/v2/documents/`,
+body,
+json: true,
+}) as IDataObject;
+
+const documentId = createResponse.id as string;
+
+// Step 2: Send invitations via invite-bulk (new GuestSession flow)
+if (sendInvitations && hasParticipants && documentId) {
+const inviteBody = {
+participants: participants.map((p) => { const part: Record<string, string> = { email: p.email }; if (p.whatsapp) part.whatsapp = p.whatsapp; if (p.name) part.name = p.name; return part; }),
+config: {
+sendInvitationByEmail: sendByEmail,
+sendInvitationByWhatsapp: sendByWhatsapp,
+invitedByEmail: participants[0]?.email || '',
+},
+};
+
+try {
+const inviteResponse = await this.helpers.httpRequest({
+method: 'POST',
+headers: authHeaders,
+url: `${baseUrl}/v2/documents/${documentId}/invite-bulk`,
+body: inviteBody,
+json: true,
+}) as IDataObject;
+
+createResponse.invitations = inviteResponse;
+} catch (inviteError) {
+const invErr = inviteError as { message?: string };
+createResponse.invitationError = invErr.message || 'Failed to send invitations';
+}
+}
+
+returnData.push({ json: createResponse });
+
 					}
 				}
 			} catch (error) {
@@ -459,12 +728,21 @@ export class Allsign implements INodeType {
 				}
 
 				const err = error as {
-					response?: { data?: { message?: string; error?: string }; status?: number };
+					response?: { data?: { message?: string; error?: string; detail?: string | object }; status?: number };
 					message?: string;
 					context?: { itemIndex?: number };
 				};
 				const errorData = err.response?.data || {};
-				const apiMessage = errorData.message || errorData.error || err.message || 'Unknown error';
+				let apiMessage = errorData.message || errorData.error || err.message || 'Unknown error';
+
+				// Handle detail field (AllSign returns errors in detail)
+				if (errorData.detail) {
+					if (typeof errorData.detail === 'string') {
+						apiMessage = errorData.detail;
+					} else {
+						apiMessage = JSON.stringify(errorData.detail);
+					}
+				}
 
 				throw new NodeOperationError(this.getNode(), `AllSign API Error: ${apiMessage}`, {
 					itemIndex: i,
