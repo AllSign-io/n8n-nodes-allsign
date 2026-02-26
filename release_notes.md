@@ -13,7 +13,8 @@ Updated the AllSign node to support the V2 API format, ensuring seamless integra
   - `document`: Now handles base64 content and filename properly.
   - `participants`: Correctly formatted list of signers.
   - `signatureValidation`: Object with boolean toggles for each verification type.
-  - `config`: Handles `sendInvitations`, `sendByEmail`, and `startAtStep` logic automatically.
+  - `config`: Handles `sendInvitations`, `sendByEmail`, `sendByWhatsapp`, and `startAtStep` logic automatically.
+  - **2-step flow**: Creates document with `sendInvitations: false`, then sends invitations via `POST /v2/documents/{id}/invite-bulk` for proper GuestSession/WhatsApp support.
 - **Authentication**: Uses `Authorization: Bearer <api_key>` header format.
 
 ### 2. File Handling Improvements

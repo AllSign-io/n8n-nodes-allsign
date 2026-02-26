@@ -56,7 +56,8 @@
 			"dist/credentials/AllSignApi.credentials.js"
 		],
 		"nodes": [
-			"dist/nodes/Allsign/Allsign.node.js"
+			"dist/nodes/Allsign/Allsign.node.js",
+			"dist/nodes/AllsignTrigger/AllsignTrigger.node.js"
 		]
 	},
 	"devDependencies": {

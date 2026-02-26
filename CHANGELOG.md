@@ -2,60 +2,44 @@
 
 All notable changes to `n8n-nodes-allsign` will be documented in this file.
 
-## [1.0.0] — 2026-02-18
+## [1.0.0-mvp.3] — 2026-02-26
 
-### 🎉 Initial Release
+### 🔧 Fixed
 
-#### AllSign Node (31 operations across 6 resources)
+- **Tests updated** — Aligned all 25 tests with the 2-step invite-bulk flow
+- **HANDOVER.md** — Updated to reflect current MVP state
 
-**Document**
+## [1.0.0-mvp.2] — 2026-02-23
 
-- Create — Upload a new PDF document for signing
-- Get — Retrieve a document by ID
-- Get Many — List documents with pagination
-- Download — Download the signed PDF
-- Send — Send a document for signing with signers
-- Update — Rename, move to folder, or update config
-- Delete — Delete a document
-- Void — Cancel/void a signing process
-- Invite — Invite a participant to sign
-- Invite Bulk — Invite multiple participants at once
-- Get Stats — Document statistics (total, by type, recent)
-- Update Signature Validations — Configure: Autógrafa, FEA, NOM-151, eIDAS, Biométrica
-- Update Signature State — Change the signing workflow state
+### ✨ Added
 
-**Signer**
+- **WhatsApp invitations** — Added `sendByWhatsapp` config and WhatsApp field per signer
+- **Signature field placement** — Support for coordinates (X, Y, page) and anchor text modes
+- **invite-bulk flow** — 2-step document creation: create doc → send invitations via `/invite-bulk`
 
-- Add — Add a signer to a document
+### 🔄 Changed
 
-**Signature Field**
+- **Document creation flow** — Now creates document with `sendInvitations: false` and sends invitations separately via invite-bulk endpoint for proper GuestSession flow
 
-- Add — Place a signature field on a PDF page
-- Add Multiple — Place multiple fields at once
-- Update — Reposition or resize a field
-- Delete — Remove a signature field
+## [1.0.0-mvp.1] — 2026-02-20
 
-**Signature**
+### ✨ Added
 
-- Delete — Remove a signature from a document
+- **Autógrafa toggle** — Converted signature type dropdown to boolean toggle
+- **Cleaned UI** — Removed unsupported Templates and Message fields
+- Full test suite rewrite (25 tests, 100% pass rate)
 
-**Folder**
+## [1.0.0-mvp.0] — 2026-02-18
 
-- Create — Create a new folder
-- Get — Retrieve a folder by ID
-- Get Many — List all folders in tree structure
-- Update — Rename or move a folder
-- Delete — Delete a folder
-- Get Documents — List documents inside a folder
+### 🎉 Initial MVP Release
 
-**Contact**
+#### AllSign Node — Create & Send (1 operation)
 
-- Create — Create a new contact
-- Get — Retrieve a contact by ID
-- Get Many — List all contacts
-- Update — Update contact details
-- Delete — Delete a contact
-- Get Documents — List documents for a contact
+- Upload PDF from URL or binary input
+- Send for signing with configurable signature requirements
+- Support for 7 signature types: Autógrafa, FEA, NOM-151, Video, Confirm Name, ID Scan, Biometric Selfie + SynthID
+- Multiple signers in a single request
+- V2 API with Bearer token authentication
 
 #### AllSign Trigger (4 webhook events)
 

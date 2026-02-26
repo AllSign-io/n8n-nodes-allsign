@@ -141,8 +141,10 @@ describe('AllSign Node', () => {
 			// First call: download PDF from URL → returns Buffer
 			const pdfBuffer = Buffer.from('fake-pdf-content');
 			mockHttpRequest.mockResolvedValueOnce(pdfBuffer);
-			// Second call: POST to /v2/documents/ → returns response
+			// Second call: POST to /v2/documents/ → returns response with id
 			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-123', name: 'Test Contract' });
+			// Third call: POST to /v2/documents/doc-123/invite-bulk
+			mockHttpRequest.mockResolvedValueOnce({ invited: 1 });
 
 			const fn = getMockExecuteFunctions({
 				resource: 'document',
@@ -161,8 +163,8 @@ describe('AllSign Node', () => {
 
 			const result = await node.execute.call(fn);
 
-			// Should have made 2 HTTP calls
-			expect(mockHttpRequest).toHaveBeenCalledTimes(2);
+			// Should have made 3 HTTP calls: download + create + invite-bulk
+			expect(mockHttpRequest).toHaveBeenCalledTimes(3);
 
 			// First call: download the PDF
 			expect(mockHttpRequest).toHaveBeenNthCalledWith(1, expect.objectContaining({
@@ -171,13 +173,13 @@ describe('AllSign Node', () => {
 				encoding: 'arraybuffer',
 			}));
 
-			// Second call: POST to V2 documents endpoint
+			// Second call: POST to V2 documents endpoint (create only, no invitations)
 			const postCall = mockHttpRequest.mock.calls[1][0];
 			expect(postCall.method).toBe('POST');
 			expect(postCall.url).toBe('https://api.allsign.io/v2/documents/');
 			expect(postCall.headers).toEqual({ Authorization: 'Bearer allsign_live_sk_test123' });
 
-			// Verify V2 body structure
+			// Verify V2 body structure — config always has sendInvitations:false (invitations are sent via invite-bulk)
 			const body = postCall.body;
 			expect(body.document).toEqual({
 				base64Content: pdfBuffer.toString('base64'),
@@ -190,12 +192,18 @@ describe('AllSign Node', () => {
 				nom151: false,
 			}));
 			expect(body.config).toEqual({
-				sendInvitations: true,
-				sendByEmail: true,
-				startAtStep: 3,
+				sendInvitations: false,
+				sendByEmail: false,
+				sendByWhatsapp: false,
+				startAtStep: 2,
 			});
 
-			expect(result[0][0].json).toEqual({ id: 'doc-123', name: 'Test Contract' });
+			// Third call: invite-bulk
+			const inviteCall = mockHttpRequest.mock.calls[2][0];
+			expect(inviteCall.method).toBe('POST');
+			expect(inviteCall.url).toBe('https://api.allsign.io/v2/documents/doc-123/invite-bulk');
+
+			expect(result[0][0].json).toEqual(expect.objectContaining({ id: 'doc-123', name: 'Test Contract' }));
 		});
 
 		it('should set correct signatureValidation for simple type', async () => {
@@ -251,6 +259,7 @@ describe('AllSign Node', () => {
 			expect(postBody.config).toEqual({
 				sendInvitations: false,
 				sendByEmail: false,
+				sendByWhatsapp: false,
 				startAtStep: 1,
 			});
 			expect(postBody.participants).toEqual([]);
@@ -265,7 +274,10 @@ describe('AllSign Node', () => {
 			const binaryBuffer = Buffer.from('binary-pdf-content');
 			mockAssertBinaryData.mockReturnValueOnce({ fileName: 'contract.pdf' });
 			mockGetBinaryDataBuffer.mockResolvedValueOnce(binaryBuffer);
+			// First call: POST to /v2/documents/ → returns response with id
 			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-bin', name: 'Binary Upload' });
+			// Second call: POST to /v2/documents/doc-bin/invite-bulk
+			mockHttpRequest.mockResolvedValueOnce({ invited: 1 });
 
 			const fn = getMockExecuteFunctions({
 				resource: 'document',
@@ -284,8 +296,8 @@ describe('AllSign Node', () => {
 
 			const result = await node.execute.call(fn);
 
-			// Should only make 1 HTTP call (no download needed)
-			expect(mockHttpRequest).toHaveBeenCalledTimes(1);
+			// Should make 2 HTTP calls: create + invite-bulk (no download needed for binary)
+			expect(mockHttpRequest).toHaveBeenCalledTimes(2);
 
 			const postCall = mockHttpRequest.mock.calls[0][0];
 			expect(postCall.method).toBe('POST');
@@ -299,7 +311,12 @@ describe('AllSign Node', () => {
 			});
 			expect(body.participants).toEqual([{ name: 'Bob', email: 'bob@test.com' }]);
 
-			expect(result[0][0].json).toEqual({ id: 'doc-bin', name: 'Binary Upload' });
+			// Second call: invite-bulk
+			const inviteCall = mockHttpRequest.mock.calls[1][0];
+			expect(inviteCall.method).toBe('POST');
+			expect(inviteCall.url).toBe('https://api.allsign.io/v2/documents/doc-bin/invite-bulk');
+
+			expect(result[0][0].json).toEqual(expect.objectContaining({ id: 'doc-bin', name: 'Binary Upload' }));
 		});
 
 		it('should use documentName.pdf when binary has no fileName', async () => {
@@ -426,6 +443,8 @@ describe('AllSign Node', () => {
 			const pdfBuffer = Buffer.from('pdf');
 			mockHttpRequest.mockResolvedValueOnce(pdfBuffer);
 			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-multi', name: 'Multi-Signer' });
+			// Third call: invite-bulk
+			mockHttpRequest.mockResolvedValueOnce({ invited: 3 });
 
 			const fn = getMockExecuteFunctions({
 				resource: 'document',
@@ -454,9 +473,15 @@ describe('AllSign Node', () => {
 				{ name: 'Bob', email: 'bob@test.com' },
 				{ name: 'Charlie', email: 'charlie@test.com' },
 			]);
-			// With participants, should send invitations
-			expect(body.config.sendInvitations).toBe(true);
-			expect(body.config.startAtStep).toBe(3);
+			// Create step always sets sendInvitations:false; invitations sent via invite-bulk
+			expect(body.config.sendInvitations).toBe(false);
+			expect(body.config.startAtStep).toBe(2);
+
+			// Verify invite-bulk was called
+			expect(mockHttpRequest).toHaveBeenCalledTimes(3);
+			const inviteCall = mockHttpRequest.mock.calls[2][0];
+			expect(inviteCall.method).toBe('POST');
+			expect(inviteCall.url).toBe('https://api.allsign.io/v2/documents/doc-multi/invite-bulk');
 		});
 	});
 
