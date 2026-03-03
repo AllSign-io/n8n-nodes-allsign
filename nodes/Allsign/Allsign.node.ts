@@ -14,7 +14,7 @@ export class Allsign implements INodeType {
 		icon: 'file:allsign.svg',
 		group: ['transform'],
 		version: 1,
-		subtitle: 'Create & Send Document',
+		subtitle: '={{$parameter["operation"]}}',
 		description:
 			'Create, sign, and manage documents with AllSign e-signature platform. Firma electrónica, NOM-151, FEA, eIDAS.',
 		defaults: {
@@ -48,10 +48,189 @@ export class Allsign implements INodeType {
 		},
 		properties: [
 			// ====================================================
-			// DOCUMENT DETAILS
+			// OPERATION SELECTOR
 			// ====================================================
+			{
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				default: 'create',
+				options: [
+					{
+						name: 'Create & Send',
+						value: 'create',
+						description: 'Create a new document and optionally send it for signing',
+						action: 'Create and send a document',
+					},
+					{
+						name: 'Get',
+						value: 'get',
+						description: 'Retrieve a single document by its ID',
+						action: 'Get a document',
+					},
+					{
+						name: 'Get Many',
+						value: 'getMany',
+						description: 'Retrieve a list of documents',
+						action: 'Get many documents',
+					},
+					{
+						name: 'Void',
+						value: 'void',
+						description: 'Cancel a document and all pending signatures',
+						action: 'Void a document',
+					},
+				],
+			},
 
-			// ------ Document Name ------
+			// ====================================================
+			// DOCUMENT ID (shared by Get, Void)
+			// ====================================================
+			{
+				displayName: 'Document ID',
+				name: 'documentId',
+				type: 'string',
+				default: '',
+				required: true,
+				placeholder: 'e.g. 550e8400-e29b-41d4-a716-446655440000',
+				description: 'The unique ID of the document',
+				displayOptions: {
+					show: {
+						operation: ['get', 'void'],
+					},
+				},
+			},
+
+			// ====================================================
+			// VOID — Reason
+			// ====================================================
+			{
+				displayName: 'Reason',
+				name: 'voidReason',
+				type: 'string',
+				default: '',
+				placeholder: 'e.g. Contract terms changed',
+				description: 'Optional reason for voiding the document',
+				displayOptions: {
+					show: {
+						operation: ['void'],
+					},
+				},
+			},
+
+			// ====================================================
+			// GET MANY — Filters
+			// ====================================================
+			{
+				displayName: 'Limit',
+				name: 'limit',
+				type: 'number',
+				default: 20,
+				typeOptions: {
+					minValue: 1,
+					maxValue: 100,
+				},
+				description: 'Max number of documents to return (1–100)',
+				displayOptions: {
+					show: {
+						operation: ['getMany'],
+					},
+				},
+			},
+			{
+				displayName: 'Filters',
+				name: 'filters',
+				type: 'collection',
+				placeholder: 'Add Filter',
+				default: {},
+				description: 'Filter and sort the document list',
+				displayOptions: {
+					show: {
+						operation: ['getMany'],
+					},
+				},
+				options: [
+					{
+						displayName: 'Created After',
+						name: 'createdAfter',
+						type: 'dateTime',
+						default: '',
+						description: 'Filter documents created after this date (ISO 8601)',
+					},
+					{
+						displayName: 'Created Before',
+						name: 'createdBefore',
+						type: 'dateTime',
+						default: '',
+						description: 'Filter documents created before this date (ISO 8601)',
+					},
+					{
+						displayName: 'Folder ID',
+						name: 'folderId',
+						type: 'string',
+						default: '',
+						description: 'Filter by folder ID',
+					},
+					{
+						displayName: 'Include All History',
+						name: 'includeAllHistory',
+						type: 'boolean',
+						default: false,
+						description: 'Whether to include the full document history instead of the default date window',
+					},
+					{
+						displayName: 'Search',
+						name: 'search',
+						type: 'string',
+						default: '',
+						placeholder: 'e.g. Contract',
+						description: 'Full-text search in document name',
+					},
+					{
+						displayName: 'Signature Status',
+						name: 'signatureStatus',
+						type: 'options',
+						default: '',
+						options: [
+							{ name: 'All', value: '' },
+							{ name: 'Collecting Signers', value: 'RECOLECTANDO_FIRMANTES' },
+							{ name: 'Waiting for Signatures', value: 'ESPERANDO_FIRMAS' },
+							{ name: 'All Signed', value: 'TODOS_FIRMARON' },
+							{ name: 'Expired', value: 'EXPIRADO' },
+							{ name: 'Voided', value: 'ANULADO' },
+						],
+						description: 'Filter by signature status',
+					},
+					{
+						displayName: 'Sort By',
+						name: 'sortBy',
+						type: 'options',
+						default: 'created_at',
+						options: [
+							{ name: 'Created At', value: 'created_at' },
+							{ name: 'Updated At', value: 'updated_at' },
+							{ name: 'Name', value: 'name' },
+						],
+						description: 'Field to sort results by',
+					},
+					{
+						displayName: 'Sort Order',
+						name: 'sortOrder',
+						type: 'options',
+						default: 'desc',
+						options: [
+							{ name: 'Descending', value: 'desc' },
+							{ name: 'Ascending', value: 'asc' },
+						],
+						description: 'Sort direction',
+					},
+				],
+			},
+
+			// ====================================================
+			// CREATE — Document Details
+			// ====================================================
 			{
 				displayName: 'Document Name',
 				name: 'documentName',
@@ -60,9 +239,12 @@ export class Allsign implements INodeType {
 				required: true,
 				placeholder: 'e.g. Contract Q1 2026',
 				description: 'Name for the new document',
+				displayOptions: {
+					show: {
+						operation: ['create'],
+					},
+				},
 			},
-
-			// ------ File Source ------
 			{
 				displayName: 'File Source',
 				name: 'fileSource',
@@ -80,6 +262,11 @@ export class Allsign implements INodeType {
 						description: 'Provide a public URL to the PDF file',
 					},
 				],
+				displayOptions: {
+					show: {
+						operation: ['create'],
+					},
+				},
 			},
 			{
 				displayName: 'Binary Property',
@@ -89,6 +276,7 @@ export class Allsign implements INodeType {
 				description: 'Name of the binary property containing the PDF file',
 				displayOptions: {
 					show: {
+						operation: ['create'],
 						fileSource: ['binary'],
 					},
 				},
@@ -102,14 +290,14 @@ export class Allsign implements INodeType {
 				description: 'Public URL of the PDF file to upload',
 				displayOptions: {
 					show: {
+						operation: ['create'],
 						fileSource: ['url'],
 					},
 				},
 			},
 
-
 			// ====================================================
-			// SIGNERS
+			// CREATE — Signers
 			// ====================================================
 			{
 				displayName: 'Signers',
@@ -122,6 +310,11 @@ export class Allsign implements INodeType {
 				required: true,
 				placeholder: 'Add Signer',
 				description: 'People who need to sign the document. Each signer needs at least an email or a WhatsApp number.',
+				displayOptions: {
+					show: {
+						operation: ['create'],
+					},
+				},
 				options: [
 					{
 						name: 'signerValues',
@@ -193,7 +386,7 @@ export class Allsign implements INodeType {
 			},
 
 			// ====================================================
-			// SIGNATURE FIELDS
+			// CREATE — Signature Fields
 			// ====================================================
 			{
 				displayName: 'Signature Fields',
@@ -206,6 +399,11 @@ export class Allsign implements INodeType {
 				placeholder: 'Add Signature Field',
 				description:
 					'Define where signatures should be placed on the document. Only assignable to signers with an email address. If empty, signers place fields manually.',
+				displayOptions: {
+					show: {
+						operation: ['create'],
+					},
+				},
 				options: [
 					{
 						name: 'fieldValues',
@@ -245,16 +443,9 @@ export class Allsign implements INodeType {
 								name: 'pageNumber',
 								type: 'number',
 								default: 1,
-								typeOptions: {
-									minValue: 1,
-								},
-								description:
-									'Page where the signature field should be placed (starts at 1). Ignored when All Pages is enabled.',
-								displayOptions: {
-									show: {
-										placementMode: ['coordinates'],
-									},
-								},
+								typeOptions: { minValue: 1 },
+								description: 'Page where the signature field should be placed (starts at 1). Ignored when All Pages is enabled.',
+								displayOptions: { show: { placementMode: ['coordinates'] } },
 							},
 							{
 								displayName: 'X Position',
@@ -262,11 +453,7 @@ export class Allsign implements INodeType {
 								type: 'number',
 								default: 100,
 								description: 'Horizontal position in points from left edge of page',
-								displayOptions: {
-									show: {
-										placementMode: ['coordinates'],
-									},
-								},
+								displayOptions: { show: { placementMode: ['coordinates'] } },
 							},
 							{
 								displayName: 'Y Position',
@@ -274,24 +461,15 @@ export class Allsign implements INodeType {
 								type: 'number',
 								default: 500,
 								description: 'Vertical position in points from top edge of page',
-								displayOptions: {
-									show: {
-										placementMode: ['coordinates'],
-									},
-								},
+								displayOptions: { show: { placementMode: ['coordinates'] } },
 							},
 							{
 								displayName: 'All Pages',
 								name: 'includeInAllPages',
 								type: 'boolean',
 								default: false,
-								description:
-									'Whether to place this field on every page of the document',
-								displayOptions: {
-									show: {
-										placementMode: ['coordinates'],
-									},
-								},
+								description: 'Whether to place this field on every page of the document',
+								displayOptions: { show: { placementMode: ['coordinates'] } },
 							},
 							{
 								displayName: 'Anchor Text',
@@ -299,21 +477,15 @@ export class Allsign implements INodeType {
 								type: 'string',
 								default: '',
 								placeholder: 'e.g. Firma del Cliente',
-								description:
-									'Text to search for in the PDF — the signature field will be placed where this text appears',
-								displayOptions: {
-									show: {
-										placementMode: ['anchor'],
-									},
-								},
+								description: 'Text to search for in the PDF — the signature field will be placed where this text appears',
+								displayOptions: { show: { placementMode: ['anchor'] } },
 							},
 							{
 								displayName: 'Height',
 								name: 'height',
 								type: 'number',
 								default: 100,
-								description:
-									'Height of the signature field in points. Width is auto-calculated (2:1 ratio).',
+								description: 'Height of the signature field in points. Width is auto-calculated (2:1 ratio).',
 							},
 						],
 					},
@@ -321,7 +493,7 @@ export class Allsign implements INodeType {
 			},
 
 			// ====================================================
-			// 📨 NOTIFICATIONS (collapsible)
+			// CREATE — Notifications (collapsible)
 			// ====================================================
 			{
 				displayName: 'Notifications',
@@ -331,6 +503,11 @@ export class Allsign implements INodeType {
 				default: {},
 				description:
 					'Configure how signers receive their signing links. The channel (email or WhatsApp) is auto-detected based on each signer\'s contact info.',
+				displayOptions: {
+					show: {
+						operation: ['create'],
+					},
+				},
 				options: [
 					{
 						displayName: 'Send Invitations',
@@ -344,7 +521,7 @@ export class Allsign implements INodeType {
 			},
 
 			// ====================================================
-			// 🔐 SIGNATURE VALIDATIONS (collapsible)
+			// CREATE — Signature Validations (collapsible)
 			// ====================================================
 			{
 				displayName: 'Signature Validations',
@@ -354,92 +531,87 @@ export class Allsign implements INodeType {
 				default: {},
 				description:
 					'Signature types and verification methods for legal validity and security',
+				displayOptions: {
+					show: {
+						operation: ['create'],
+					},
+				},
 				options: [
 					{
 						displayName: 'Autógrafa (Handwritten Signature)',
 						name: 'verifyAutografa',
 						type: 'boolean',
 						default: true,
-						description:
-							'Whether to require a handwritten-style digital signature with biometric capture. Enabled by default.',
+						description: 'Whether to require a handwritten-style digital signature with biometric capture. Enabled by default.',
 					},
 					{
 						displayName: 'Biometric Selfie',
 						name: 'verifyBiometricSelfie',
 						type: 'boolean',
 						default: false,
-						description:
-							'Whether to require a biometric selfie for face comparison against the signer\'s ID',
+						description: 'Whether to require a biometric selfie for face comparison against the signer\'s ID',
 					},
 					{
 						displayName: 'Confirm Name',
 						name: 'verifyConfirmName',
 						type: 'boolean',
 						default: false,
-						description:
-							'Whether to require the signer to type their full name as confirmation',
+						description: 'Whether to require the signer to type their full name as confirmation',
 					},
 					{
 						displayName: 'eIDAS (European Electronic Signature)',
 						name: 'verifyEidas',
 						type: 'boolean',
 						default: false,
-						description:
-							'Whether to apply eIDAS compliance to the document for European legal validity',
+						description: 'Whether to apply eIDAS compliance to the document for European legal validity',
 					},
 					{
 						displayName: 'FEA (Advanced Electronic Signature)',
 						name: 'verifyFea',
 						type: 'boolean',
 						default: false,
-						description:
-							'Whether to require FEA (Firma Electrónica Avanzada) verification',
+						description: 'Whether to require FEA (Firma Electrónica Avanzada) verification',
 					},
 					{
 						displayName: 'ID Scan',
 						name: 'verifyIdScan',
 						type: 'boolean',
 						default: false,
-						description:
-							'Whether to require signers to scan their government-issued ID',
+						description: 'Whether to require signers to scan their government-issued ID',
 					},
 					{
 						displayName: 'Identity Verification',
 						name: 'verifyIdentity',
 						type: 'boolean',
 						default: false,
-						description:
-							'Whether to require identity verification for signers',
+						description: 'Whether to require identity verification for signers',
 					},
 					{
 						displayName: 'NOM-151 (Timestamping)',
 						name: 'verifyNom151',
 						type: 'boolean',
 						default: false,
-						description:
-							'Whether to apply NOM-151 certified timestamping to the document',
+						description: 'Whether to apply NOM-151 certified timestamping to the document',
 					},
 					{
 						displayName: 'SynthID (AI Detection)',
 						name: 'verifySynthId',
 						type: 'boolean',
 						default: false,
-						description:
-							'Whether to verify the selfie was taken by a real person and not AI-generated (requires Biometric Selfie)',
+						description: 'Whether to verify the selfie was taken by a real person and not AI-generated (requires Biometric Selfie)',
 					},
 					{
 						displayName: 'Video Signature',
 						name: 'verifyVideo',
 						type: 'boolean',
 						default: false,
-						description:
-							'Whether to require a recorded video of the signer during the signing process',
+						description: 'Whether to require a recorded video of the signer during the signing process',
 					},
 				],
 			},
 
 			// ====================================================
-			// ⚙️ ADDITIONAL OPTIONS (collapsible)
+			// CREATE — Additional Options (collapsible)
 			// ====================================================
 			{
 				displayName: 'Additional Options',
@@ -447,16 +619,19 @@ export class Allsign implements INodeType {
 				type: 'collection',
 				placeholder: 'Add Option',
 				default: {},
-				description:
-					'Additional configuration for the document',
+				description: 'Additional configuration for the document',
+				displayOptions: {
+					show: {
+						operation: ['create'],
+					},
+				},
 				options: [
 					{
 						displayName: 'Expires At',
 						name: 'expiresAt',
 						type: 'dateTime',
 						default: '',
-						description:
-							'Optional expiration deadline (ISO 8601). After this date, the document expires and can no longer be signed.',
+						description: 'Optional expiration deadline (ISO 8601). After this date, the document expires and can no longer be signed.',
 					},
 					{
 						displayName: 'Folder Name',
@@ -464,8 +639,7 @@ export class Allsign implements INodeType {
 						type: 'string',
 						default: '',
 						placeholder: 'e.g. Contracts 2026',
-						description:
-							'Name of the folder where the document will be stored. Leave empty to use the default location.',
+						description: 'Name of the folder where the document will be stored. Leave empty to use the default location.',
 					},
 					{
 						displayName: 'Placeholders (DOCX)',
@@ -473,8 +647,7 @@ export class Allsign implements INodeType {
 						type: 'json',
 						default: '{}',
 						placeholder: '{"client_name": "Juan Pérez", "amount": "$10,000"}',
-						description:
-							'Key-value pairs to replace variables in DOCX templates (e.g. {{ client_name }} → "Juan Pérez"). Only applied for .docx files; ignored for PDFs.',
+						description: 'Key-value pairs to replace variables in DOCX templates (e.g. {{ client_name }} → "Juan Pérez"). Only applied for .docx files; ignored for PDFs.',
 					},
 				],
 			},
@@ -494,238 +667,292 @@ export class Allsign implements INodeType {
 
 		for (let i = 0; i < items.length; i++) {
 			try {
-				const documentName = this.getNodeParameter('documentName', i) as string;
-				const fileSource = this.getNodeParameter('fileSource', i) as string;
+				const operation = this.getNodeParameter('operation', i) as string;
 
-				const signersData = this.getNodeParameter('signers.signerValues', i, []) as Array<{
-					name: string;
-					email?: string;
-					countryCode?: string;
-					customCountryCode?: string;
-					phoneNumber?: string;
-				}>;
+				// ==============================================================
+				// GET — Retrieve a single document by ID
+				// ==============================================================
+				if (operation === 'get') {
+					const documentId = this.getNodeParameter('documentId', i) as string;
 
-				// Notifications (simplified — channel auto-detected by backend)
-				const notifSettings = this.getNodeParameter('notificationSettings', i, {}) as IDataObject;
-				const sendInvitations = (notifSettings.sendInvitations as boolean) ?? true;
-
-				// Signature Validations (from collapsible collection)
-				const sigValidations = this.getNodeParameter('signatureValidations', i, {}) as IDataObject;
-				const verifyAutografa = (sigValidations.verifyAutografa as boolean) ?? true;
-				const verifyFea = (sigValidations.verifyFea as boolean) ?? false;
-				const verifyEidas = (sigValidations.verifyEidas as boolean) ?? false;
-				const verifyNom151 = (sigValidations.verifyNom151 as boolean) ?? false;
-				const verifyVideo = (sigValidations.verifyVideo as boolean) ?? false;
-				const verifyConfirmName = (sigValidations.verifyConfirmName as boolean) ?? false;
-				const verifyIdentity = (sigValidations.verifyIdentity as boolean) ?? false;
-				const verifyIdScan = (sigValidations.verifyIdScan as boolean) ?? false;
-				const verifyBiometricSelfie = (sigValidations.verifyBiometricSelfie as boolean) ?? false;
-				const verifySynthId = (sigValidations.verifySynthId as boolean) ?? false;
-
-				// Signature fields
-				const fieldsData = this.getNodeParameter(
-					'signatureFields.fieldValues',
-					i,
-					[],
-				) as Array<{
-					participantEmail: string;
-					placementMode: string;
-					x?: number;
-					y?: number;
-					pageNumber?: number;
-					includeInAllPages?: boolean;
-					anchorString?: string;
-					height?: number;
-				}>;
-
-				// Additional Options (from collapsible collection)
-				const additionalOpts = this.getNodeParameter('additionalOptions', i, {}) as IDataObject;
-				const folderName = (additionalOpts.folderName as string) ?? '';
-				const expiresAt = (additionalOpts.expiresAt as string) ?? '';
-				const placeholdersRaw = (additionalOpts.placeholders as string) ?? '{}';
-
-				// Parse placeholders JSON
-				let placeholders: Record<string, string> | undefined;
-				try {
-					const parsed = JSON.parse(placeholdersRaw);
-					if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
-						placeholders = parsed;
-					}
-				} catch {
-					// Invalid JSON — ignore silently
-				}
-
-				// Get file as base64
-				let fileBase64: string;
-				let fileName: string;
-
-				if (fileSource === 'url') {
-					const fileUrl = this.getNodeParameter('fileUrl', i) as string;
-					const fileBuffer = (await this.helpers.httpRequest({
+					const response = (await this.helpers.httpRequest({
 						method: 'GET',
-						url: fileUrl,
-						encoding: 'arraybuffer',
-						returnFullResponse: false,
-					})) as Buffer;
-					fileBase64 = Buffer.from(fileBuffer).toString('base64');
-					const urlParts = fileUrl.split('/');
-					fileName = urlParts[urlParts.length - 1] || 'document.pdf';
-				} else {
-					const binaryProperty = this.getNodeParameter('binaryProperty', i) as string;
-					const binaryData = this.helpers.assertBinaryData(i, binaryProperty);
-					const buffer = await this.helpers.getBinaryDataBuffer(i, binaryProperty);
-					fileBase64 = buffer.toString('base64');
-					fileName = binaryData.fileName || 'document.pdf';
+						headers: authHeaders,
+						url: `${baseUrl}/v2/documents/${documentId}`,
+						json: true,
+					})) as IDataObject;
+
+					returnData.push({ json: response });
 				}
 
-				// Build signatureValidation — corrected field mappings
-				const signatureValidation: Record<string, boolean> = {
-					autografa: verifyAutografa,
-					FEA: verifyFea,
-					eidas: verifyEidas,
-					nom151: verifyNom151,
-					videofirma: verifyVideo,
-					biometric_signature: verifyBiometricSelfie,
-					confirm_name_to_finish: verifyConfirmName,
-					id_scan: verifyIdScan,
-				};
+				// ==============================================================
+				// GET MANY — List documents with filters
+				// ==============================================================
+				else if (operation === 'getMany') {
+					const limit = this.getNodeParameter('limit', i, 20) as number;
+					const filters = this.getNodeParameter('filters', i, {}) as IDataObject;
 
-				if (verifyIdentity) {
-					signatureValidation.ai_verification = verifySynthId || verifyIdScan;
+					const qs: Record<string, string | number | boolean> = { limit };
+
+					if (filters.search) qs.search = filters.search as string;
+					if (filters.signatureStatus) qs.signatureStatus = filters.signatureStatus as string;
+					if (filters.folderId) qs.folderId = filters.folderId as string;
+					if (filters.sortBy) qs.sortBy = filters.sortBy as string;
+					if (filters.sortOrder) qs.sortOrder = filters.sortOrder as string;
+					if (filters.createdAfter) qs.createdAfter = filters.createdAfter as string;
+					if (filters.createdBefore) qs.createdBefore = filters.createdBefore as string;
+					if (filters.includeAllHistory) qs.includeAllHistory = true;
+
+					const response = (await this.helpers.httpRequest({
+						method: 'GET',
+						headers: authHeaders,
+						url: `${baseUrl}/v2/documents/`,
+						qs,
+						json: true,
+					})) as IDataObject;
+
+					// The API returns { data: [...], pagination: {...} }
+					const documents = (response.data as IDataObject[]) || [];
+					for (const doc of documents) {
+						returnData.push({ json: doc });
+					}
+
+					// If no documents, return the raw response so the user sees the pagination info
+					if (documents.length === 0) {
+						returnData.push({ json: response });
+					}
 				}
 
-				// Build participants (email is optional — at least email or WhatsApp required)
-				const participants = signersData.map((signer) => {
-					const participant: Record<string, string> = {
-						name: signer.name,
+				// ==============================================================
+				// VOID — Cancel document and pending signatures
+				// ==============================================================
+				else if (operation === 'void') {
+					const documentId = this.getNodeParameter('documentId', i) as string;
+					const reason = this.getNodeParameter('voidReason', i, '') as string;
+
+					const response = (await this.helpers.httpRequest({
+						method: 'POST',
+						headers: authHeaders,
+						url: `${baseUrl}/v2/documents/${documentId}/void`,
+						body: { reason },
+						json: true,
+					})) as IDataObject;
+
+					returnData.push({ json: response });
+				}
+
+				// ==============================================================
+				// CREATE & SEND — Create document and optionally send invitations
+				// ==============================================================
+				else {
+					const documentName = this.getNodeParameter('documentName', i) as string;
+					const fileSource = this.getNodeParameter('fileSource', i) as string;
+
+					const signersData = this.getNodeParameter('signers.signerValues', i, []) as Array<{
+						name: string;
+						email?: string;
+						countryCode?: string;
+						customCountryCode?: string;
+						phoneNumber?: string;
+					}>;
+
+					// Notifications
+					const notifSettings = this.getNodeParameter('notificationSettings', i, {}) as IDataObject;
+					const sendInvitations = (notifSettings.sendInvitations as boolean) ?? true;
+
+					// Signature Validations
+					const sigValidations = this.getNodeParameter('signatureValidations', i, {}) as IDataObject;
+					const verifyAutografa = (sigValidations.verifyAutografa as boolean) ?? true;
+					const verifyFea = (sigValidations.verifyFea as boolean) ?? false;
+					const verifyEidas = (sigValidations.verifyEidas as boolean) ?? false;
+					const verifyNom151 = (sigValidations.verifyNom151 as boolean) ?? false;
+					const verifyVideo = (sigValidations.verifyVideo as boolean) ?? false;
+					const verifyConfirmName = (sigValidations.verifyConfirmName as boolean) ?? false;
+					const verifyIdentity = (sigValidations.verifyIdentity as boolean) ?? false;
+					const verifyIdScan = (sigValidations.verifyIdScan as boolean) ?? false;
+					const verifyBiometricSelfie = (sigValidations.verifyBiometricSelfie as boolean) ?? false;
+					const verifySynthId = (sigValidations.verifySynthId as boolean) ?? false;
+
+					// Signature fields
+					const fieldsData = this.getNodeParameter('signatureFields.fieldValues', i, []) as Array<{
+						participantEmail: string;
+						placementMode: string;
+						x?: number;
+						y?: number;
+						pageNumber?: number;
+						includeInAllPages?: boolean;
+						anchorString?: string;
+						height?: number;
+					}>;
+
+					// Additional Options
+					const additionalOpts = this.getNodeParameter('additionalOptions', i, {}) as IDataObject;
+					const folderName = (additionalOpts.folderName as string) ?? '';
+					const expiresAt = (additionalOpts.expiresAt as string) ?? '';
+					const placeholdersRaw = (additionalOpts.placeholders as string) ?? '{}';
+
+					let placeholders: Record<string, string> | undefined;
+					try {
+						const parsed = JSON.parse(placeholdersRaw);
+						if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+							placeholders = parsed;
+						}
+					} catch {
+						// Invalid JSON — ignore silently
+					}
+
+					// Get file as base64
+					let fileBase64: string;
+					let fileName: string;
+
+					if (fileSource === 'url') {
+						const fileUrl = this.getNodeParameter('fileUrl', i) as string;
+						const fileBuffer = (await this.helpers.httpRequest({
+							method: 'GET',
+							url: fileUrl,
+							encoding: 'arraybuffer',
+							returnFullResponse: false,
+						})) as Buffer;
+						fileBase64 = Buffer.from(fileBuffer).toString('base64');
+						const urlParts = fileUrl.split('/');
+						fileName = urlParts[urlParts.length - 1] || 'document.pdf';
+					} else {
+						const binaryProperty = this.getNodeParameter('binaryProperty', i) as string;
+						const binaryData = this.helpers.assertBinaryData(i, binaryProperty);
+						const buffer = await this.helpers.getBinaryDataBuffer(i, binaryProperty);
+						fileBase64 = buffer.toString('base64');
+						fileName = binaryData.fileName || 'document.pdf';
+					}
+
+					// Build signatureValidation
+					const signatureValidation: Record<string, boolean> = {
+						autografa: verifyAutografa,
+						FEA: verifyFea,
+						eidas: verifyEidas,
+						nom151: verifyNom151,
+						videofirma: verifyVideo,
+						biometric_signature: verifyBiometricSelfie,
+						confirm_name_to_finish: verifyConfirmName,
+						id_scan: verifyIdScan,
 					};
 
-					if (signer.email && signer.email.trim() !== '') {
-						participant.email = signer.email.trim();
+					if (verifyIdentity) {
+						signatureValidation.ai_verification = verifySynthId || verifyIdScan;
 					}
 
-					if (signer.phoneNumber && signer.phoneNumber.trim() !== '') {
-						const code = signer.countryCode === 'custom'
-							? (signer.customCountryCode || '+52')
-							: (signer.countryCode || '+52');
-						participant.whatsapp = `${code}${signer.phoneNumber.trim()}`;
-					}
+					// Build participants
+					const participants = signersData.map((signer) => {
+						const participant: Record<string, string> = { name: signer.name };
 
-					if (!participant.email && !participant.whatsapp) {
-						throw new NodeOperationError(
-							this.getNode(),
-							`Signer "${signer.name}" must have at least an email address or a WhatsApp phone number`,
-							{ itemIndex: i },
-						);
-					}
+						if (signer.email && signer.email.trim() !== '') {
+							participant.email = signer.email.trim();
+						}
+						if (signer.phoneNumber && signer.phoneNumber.trim() !== '') {
+							const code = signer.countryCode === 'custom'
+								? (signer.customCountryCode || '+52')
+								: (signer.countryCode || '+52');
+							participant.whatsapp = `${code}${signer.phoneNumber.trim()}`;
+						}
+						if (!participant.email && !participant.whatsapp) {
+							throw new NodeOperationError(
+								this.getNode(),
+								`Signer "${signer.name}" must have at least an email address or a WhatsApp phone number`,
+								{ itemIndex: i },
+							);
+						}
+						return participant;
+					});
 
-					return participant;
-				});
-
-				// Build signature fields
-				const fields = fieldsData.map((field) => {
-					if (field.placementMode === 'anchor') {
-						return {
+					// Build signature fields
+					const fields = fieldsData.map((field) => {
+						if (field.placementMode === 'anchor') {
+							return {
+								participantEmail: field.participantEmail,
+								anchorString: field.anchorString || '',
+								height: field.height || 100,
+							};
+						}
+						const fieldObj: Record<string, unknown> = {
 							participantEmail: field.participantEmail,
-							anchorString: field.anchorString || '',
+							position: { x: field.x ?? 100, y: field.y ?? 500 },
 							height: field.height || 100,
 						};
-					}
-					const fieldObj: Record<string, unknown> = {
-						participantEmail: field.participantEmail,
-						position: {
-							x: field.x ?? 100,
-							y: field.y ?? 500,
-						},
-						height: field.height || 100,
+						if (field.includeInAllPages) {
+							fieldObj.includeInAllPages = true;
+						} else {
+							fieldObj.pageNumber = field.pageNumber || 1;
+						}
+						return fieldObj;
+					});
+
+					// Build request body
+					const hasParticipants = participants.length > 0;
+					const startAtStep = hasParticipants ? 2 : 1;
+
+					const configObj: Record<string, unknown> = {
+						sendInvitations: false,
+						startAtStep,
 					};
-					if (field.includeInAllPages) {
-						fieldObj.includeInAllPages = true;
-					} else {
-						fieldObj.pageNumber = field.pageNumber || 1;
-					}
-					return fieldObj;
-				});
+					if (expiresAt) configObj.expiresAt = expiresAt;
 
-				// Build request body — no deprecated sendByEmail/sendByWhatsapp
-				const hasParticipants = participants.length > 0;
-				const startAtStep = hasParticipants ? 2 : 1;
-
-				const configObj: Record<string, unknown> = {
-					sendInvitations: false,
-					startAtStep,
-				};
-
-				if (expiresAt) {
-					configObj.expiresAt = expiresAt;
-				}
-
-				const body: Record<string, unknown> = {
-					document: {
-						base64Content: fileBase64,
-						name: fileName.endsWith('.pdf') ? fileName : `${documentName}.pdf`,
-					},
-					participants,
-					signatureValidation,
-					config: configObj,
-				};
-
-				if (fields.length > 0) {
-					body.fields = fields;
-				}
-
-				if (folderName.trim()) {
-					body.folderName = folderName.trim();
-				}
-
-				if (placeholders) {
-					body.placeholders = placeholders;
-				}
-
-				const createResponse = (await this.helpers.httpRequest({
-					method: 'POST',
-					headers: authHeaders,
-					url: `${baseUrl}/v2/documents/`,
-					body,
-					json: true,
-				})) as IDataObject;
-
-				const documentId = createResponse.id as string;
-
-				// Step 2: Send invitations via invite-bulk (auto-detects channel per participant)
-				if (sendInvitations && hasParticipants && documentId) {
-					const inviteBody = {
-						participants: participants.map((p) => {
-							const part: Record<string, string> = {};
-							if (p.email) part.email = p.email;
-							if (p.whatsapp) part.whatsapp = p.whatsapp;
-							if (p.name) part.name = p.name;
-							return part;
-						}),
-						config: {
-							sendInvitationByEmail: true,
-							sendInvitationByWhatsapp: true,
+					const body: Record<string, unknown> = {
+						document: {
+							base64Content: fileBase64,
+							name: fileName.endsWith('.pdf') ? fileName : `${documentName}.pdf`,
 						},
+						participants,
+						signatureValidation,
+						config: configObj,
 					};
 
-					try {
-						const inviteResponse = (await this.helpers.httpRequest({
-							method: 'POST',
-							headers: authHeaders,
-							url: `${baseUrl}/v2/documents/${documentId}/invite-bulk`,
-							body: inviteBody,
-							json: true,
-						})) as IDataObject;
+					if (fields.length > 0) body.fields = fields;
+					if (folderName.trim()) body.folderName = folderName.trim();
+					if (placeholders) body.placeholders = placeholders;
 
-						createResponse.invitations = inviteResponse;
-					} catch (inviteError) {
-						const invErr = inviteError as { message?: string };
-						createResponse.invitationError =
-							invErr.message || 'Failed to send invitations';
+					const createResponse = (await this.helpers.httpRequest({
+						method: 'POST',
+						headers: authHeaders,
+						url: `${baseUrl}/v2/documents/`,
+						body,
+						json: true,
+					})) as IDataObject;
+
+					const documentId = createResponse.id as string;
+
+					// Send invitations via invite-bulk
+					if (sendInvitations && hasParticipants && documentId) {
+						const inviteBody = {
+							participants: participants.map((p) => {
+								const part: Record<string, string> = {};
+								if (p.email) part.email = p.email;
+								if (p.whatsapp) part.whatsapp = p.whatsapp;
+								if (p.name) part.name = p.name;
+								return part;
+							}),
+							config: {
+								sendInvitationByEmail: true,
+								sendInvitationByWhatsapp: true,
+							},
+						};
+
+						try {
+							const inviteResponse = (await this.helpers.httpRequest({
+								method: 'POST',
+								headers: authHeaders,
+								url: `${baseUrl}/v2/documents/${documentId}/invite-bulk`,
+								body: inviteBody,
+								json: true,
+							})) as IDataObject;
+							createResponse.invitations = inviteResponse;
+						} catch (inviteError) {
+							const invErr = inviteError as { message?: string };
+							createResponse.invitationError =
+								invErr.message || 'Failed to send invitations';
+						}
 					}
-				}
 
-				returnData.push({ json: createResponse });
+					returnData.push({ json: createResponse });
+				}
 			} catch (error) {
 				if (this.continueOnFail()) {
 					returnData.push({ json: { error: (error as Error).message } });
@@ -738,7 +965,6 @@ export class Allsign implements INodeType {
 						status?: number;
 					};
 					message?: string;
-					context?: { itemIndex?: number };
 				};
 				const errorData = err.response?.data || {};
 				let apiMessage =
