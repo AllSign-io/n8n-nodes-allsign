@@ -153,14 +153,27 @@ describe('AllSign Node', () => {
 			expect(emailField.required).toBeUndefined();
 		});
 
-		it('should have expiresAt and placeholders in Additional Options', () => {
+		it('should have expiresAt, templateVariables, folderId, and folderName in Additional Options', () => {
 			const additionalOpts = node.description.properties.find(
 				(p) => p.name === 'additionalOptions',
 			);
 			const optNames = (additionalOpts as any).options.map((o: any) => o.name);
 			expect(optNames).toContain('expiresAt');
-			expect(optNames).toContain('placeholders');
+			expect(optNames).toContain('templateVariables');
 			expect(optNames).toContain('folderName');
+			expect(optNames).toContain('folderId');
+		});
+
+		it('should have Permissions collection with ownerEmail, collaborators, isPublicRead', () => {
+			const perms = node.description.properties.find(
+				(p) => p.name === 'permissions',
+			);
+			expect(perms).toBeDefined();
+			expect((perms as any).type).toBe('collection');
+			const optNames = (perms as any).options.map((o: any) => o.name);
+			expect(optNames).toContain('ownerEmail');
+			expect(optNames).toContain('collaborators');
+			expect(optNames).toContain('isPublicRead');
 		});
 	});
 
@@ -507,7 +520,7 @@ describe('AllSign Node', () => {
 			expect(body.signatureValidation).toEqual(expect.objectContaining({
 				autografa: true,
 				FEA: true,
-				eidas: true,
+				eIDAS: true,
 				nom151: true,
 				confirm_name_to_finish: true,
 				id_scan: true,
@@ -566,10 +579,10 @@ describe('AllSign Node', () => {
 	// New Features (Placeholders, ExpiresAt)
 	// ----------------------------------------------------------
 	describe('New Features', () => {
-		it('should include placeholders in body when provided', async () => {
+		it('should include template with variables wrapper when templateVariables provided', async () => {
 			const pdfBuffer = Buffer.from('pdf');
 			mockHttpRequest.mockResolvedValueOnce(pdfBuffer);
-			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-placeholders' });
+			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-template' });
 
 			const fn = getMockExecuteFunctions({
 				documentName: 'Template Doc',
@@ -579,25 +592,24 @@ describe('AllSign Node', () => {
 				notificationSettings: { sendInvitations: false },
 				signatureValidations: {},
 				additionalOptions: {
-					placeholders: '{"client_name": "Juan", "amount": "$10,000"}',
+					templateVariables: '{"client_name": "Juan", "amount": "$10,000"}',
 				},
 			});
 
 			await node.execute.call(fn);
 			const body = mockHttpRequest.mock.calls[1][0].body;
-			expect(body.placeholders).toEqual({
-				client_name: 'Juan',
-				amount: '$10,000',
+			expect(body.template).toEqual({
+				variables: { client_name: 'Juan', amount: '$10,000' },
 			});
 		});
 
-		it('should not include placeholders when empty', async () => {
+		it('should not include template when empty', async () => {
 			const pdfBuffer = Buffer.from('pdf');
 			mockHttpRequest.mockResolvedValueOnce(pdfBuffer);
-			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-no-ph' });
+			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-no-tmpl' });
 
 			const fn = getMockExecuteFunctions({
-				documentName: 'No Placeholders',
+				documentName: 'No Template',
 				fileSource: 'url',
 				fileUrl: 'https://example.com/doc.pdf',
 				'signers.signerValues': [],
@@ -607,7 +619,7 @@ describe('AllSign Node', () => {
 
 			await node.execute.call(fn);
 			const body = mockHttpRequest.mock.calls[1][0].body;
-			expect(body).not.toHaveProperty('placeholders');
+			expect(body).not.toHaveProperty('template');
 		});
 
 		it('should include expiresAt in config when provided', async () => {
@@ -630,6 +642,76 @@ describe('AllSign Node', () => {
 			await node.execute.call(fn);
 			const body = mockHttpRequest.mock.calls[1][0].body;
 			expect(body.config.expiresAt).toBe('2026-04-01T00:00:00Z');
+		});
+
+		it('should use folderId over folderName when both provided', async () => {
+			const pdfBuffer = Buffer.from('pdf');
+			mockHttpRequest.mockResolvedValueOnce(pdfBuffer);
+			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-folder' });
+
+			const fn = getMockExecuteFunctions({
+				documentName: 'Folder Doc',
+				fileSource: 'url',
+				fileUrl: 'https://example.com/doc.pdf',
+				'signers.signerValues': [],
+				notificationSettings: { sendInvitations: false },
+				signatureValidations: {},
+				additionalOptions: {
+					folderId: 'folder-uuid-123',
+					folderName: 'Contracts',
+				},
+			});
+
+			await node.execute.call(fn);
+			const body = mockHttpRequest.mock.calls[1][0].body;
+			expect(body.folderId).toBe('folder-uuid-123');
+			expect(body).not.toHaveProperty('folderName');
+		});
+
+		it('should include permissions when provided', async () => {
+			const pdfBuffer = Buffer.from('pdf');
+			mockHttpRequest.mockResolvedValueOnce(pdfBuffer);
+			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-perms' });
+
+			const fn = getMockExecuteFunctions({
+				documentName: 'Perms Doc',
+				fileSource: 'url',
+				fileUrl: 'https://example.com/doc.pdf',
+				'signers.signerValues': [],
+				notificationSettings: { sendInvitations: false },
+				signatureValidations: {},
+				permissions: {
+					ownerEmail: 'legal@company.com',
+					collaborators: '[{"email": "cfo@company.com", "permissions": ["read", "sign"]}]',
+					isPublicRead: false,
+				},
+			});
+
+			await node.execute.call(fn);
+			const body = mockHttpRequest.mock.calls[1][0].body;
+			expect(body.permissions).toEqual({
+				ownerEmail: 'legal@company.com',
+				collaborators: [{ email: 'cfo@company.com', permissions: ['read', 'sign'] }],
+			});
+		});
+
+		it('should not include permissions when empty', async () => {
+			const pdfBuffer = Buffer.from('pdf');
+			mockHttpRequest.mockResolvedValueOnce(pdfBuffer);
+			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-no-perms' });
+
+			const fn = getMockExecuteFunctions({
+				documentName: 'No Perms',
+				fileSource: 'url',
+				fileUrl: 'https://example.com/doc.pdf',
+				'signers.signerValues': [],
+				notificationSettings: { sendInvitations: false },
+				signatureValidations: {},
+			});
+
+			await node.execute.call(fn);
+			const body = mockHttpRequest.mock.calls[1][0].body;
+			expect(body).not.toHaveProperty('permissions');
 		});
 	});
 

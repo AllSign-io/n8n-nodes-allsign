@@ -121,7 +121,7 @@ export class Allsign implements INodeType {
 				default: {},
 				required: true,
 				placeholder: 'Add Signer',
-				description: 'People who need to sign the document. Each signer needs at least an email or a WhatsApp number.',
+				description: 'People who need to sign the document. Each signer needs at least an email or a WhatsApp number. When both are provided, the signer verifies their identity via OTP on both channels during signing.',
 				options: [
 					{
 						name: 'signerValues',
@@ -141,7 +141,7 @@ export class Allsign implements INodeType {
 								type: 'string',
 								placeholder: 'name@email.com',
 								default: '',
-								description: 'Email address of the signer. Optional if a WhatsApp phone number is provided.',
+								description: 'Email address of the signer. Optional if WhatsApp is provided. When both are given, the signer verifies via OTP on both channels.',
 							},
 							{
 								displayName: 'Country Code',
@@ -330,7 +330,7 @@ export class Allsign implements INodeType {
 				placeholder: 'Configure Notifications',
 				default: {},
 				description:
-					'Configure how signers receive their signing links. The channel (email or WhatsApp) is auto-detected based on each signer\'s contact info.',
+					'Configure how signers receive their signing links. The channel (email or WhatsApp) is auto-detected per signer. When both are provided, OTP is sent on both channels for dual verification.',
 				options: [
 					{
 						displayName: 'Send Invitations',
@@ -439,6 +439,47 @@ export class Allsign implements INodeType {
 			},
 
 			// ====================================================
+			// 👥 PERMISSIONS (collapsible)
+			// ====================================================
+			{
+				displayName: 'Permissions',
+				name: 'permissions',
+				type: 'collection',
+				placeholder: 'Configure Permissions',
+				default: {},
+				description:
+					'Define the document owner and collaborators with granular access control',
+				options: [
+					{
+						displayName: 'Owner Email',
+						name: 'ownerEmail',
+						type: 'string',
+						default: '',
+						placeholder: 'e.g. legal@company.com',
+						description:
+							'Email of the document owner. If omitted, the owner will be the user associated with the API key.',
+					},
+					{
+						displayName: 'Collaborators',
+						name: 'collaborators',
+						type: 'json',
+						default: '[]',
+						placeholder: '[{"email": "cfo@company.com", "permissions": ["read", "sign"]}]',
+						description:
+							'List of collaborators with specific permissions. Each has an email and a permissions array. Valid permissions: read, update, delete, sign, admin. A collaborator cannot also be a signer.',
+					},
+					{
+						displayName: 'Public Read',
+						name: 'isPublicRead',
+						type: 'boolean',
+						default: false,
+						description:
+							'Whether the document is publicly readable without authentication',
+					},
+				],
+			},
+
+			// ====================================================
 			// ⚙️ ADDITIONAL OPTIONS (collapsible)
 			// ====================================================
 			{
@@ -459,17 +500,26 @@ export class Allsign implements INodeType {
 							'Optional expiration deadline (ISO 8601). After this date, the document expires and can no longer be signed.',
 					},
 					{
+						displayName: 'Folder ID',
+						name: 'folderId',
+						type: 'string',
+						default: '',
+						placeholder: 'e.g. 550e8400-e29b-41d4-a716-446655440000',
+						description:
+							'ID of the folder where the document will be stored. Mutually exclusive with Folder Name — use one or the other.',
+					},
+					{
 						displayName: 'Folder Name',
 						name: 'folderName',
 						type: 'string',
 						default: '',
 						placeholder: 'e.g. Contracts 2026',
 						description:
-							'Name of the folder where the document will be stored. Leave empty to use the default location.',
+							'Name of the folder where the document will be stored. Mutually exclusive with Folder ID — use one or the other.',
 					},
 					{
-						displayName: 'Placeholders (DOCX)',
-						name: 'placeholders',
+						displayName: 'Template Variables (DOCX)',
+						name: 'templateVariables',
 						type: 'json',
 						default: '{}',
 						placeholder: '{"client_name": "Juan Pérez", "amount": "$10,000"}',
@@ -540,16 +590,33 @@ export class Allsign implements INodeType {
 
 				// Additional Options (from collapsible collection)
 				const additionalOpts = this.getNodeParameter('additionalOptions', i, {}) as IDataObject;
+				const folderId = (additionalOpts.folderId as string) ?? '';
 				const folderName = (additionalOpts.folderName as string) ?? '';
 				const expiresAt = (additionalOpts.expiresAt as string) ?? '';
-				const placeholdersRaw = (additionalOpts.placeholders as string) ?? '{}';
+				const templateVarsRaw = (additionalOpts.templateVariables as string) ?? '{}';
 
-				// Parse placeholders JSON
-				let placeholders: Record<string, string> | undefined;
+				// Parse template variables JSON
+				let templateVariables: Record<string, string> | undefined;
 				try {
-					const parsed = JSON.parse(placeholdersRaw);
+					const parsed = JSON.parse(templateVarsRaw);
 					if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
-						placeholders = parsed;
+						templateVariables = parsed;
+					}
+				} catch {
+					// Invalid JSON — ignore silently
+				}
+
+				// Permissions (from collapsible collection)
+				const permSettings = this.getNodeParameter('permissions', i, {}) as IDataObject;
+				const ownerEmail = (permSettings.ownerEmail as string) ?? '';
+				const collaboratorsRaw = (permSettings.collaborators as string) ?? '[]';
+				const isPublicRead = (permSettings.isPublicRead as boolean) ?? false;
+
+				let collaborators: Array<{ email: string; permissions: string[] }> | undefined;
+				try {
+					const parsed = JSON.parse(collaboratorsRaw);
+					if (Array.isArray(parsed) && parsed.length > 0) {
+						collaborators = parsed;
 					}
 				} catch {
 					// Invalid JSON — ignore silently
@@ -582,7 +649,7 @@ export class Allsign implements INodeType {
 				const signatureValidation: Record<string, boolean> = {
 					autografa: verifyAutografa,
 					FEA: verifyFea,
-					eidas: verifyEidas,
+					eIDAS: verifyEidas,
 					nom151: verifyNom151,
 					videofirma: verifyVideo,
 					biometric_signature: verifyBiometricSelfie,
@@ -674,12 +741,23 @@ export class Allsign implements INodeType {
 					body.fields = fields;
 				}
 
-				if (folderName.trim()) {
+				if (folderId.trim()) {
+					body.folderId = folderId.trim();
+				} else if (folderName.trim()) {
 					body.folderName = folderName.trim();
 				}
 
-				if (placeholders) {
-					body.placeholders = placeholders;
+				if (templateVariables) {
+					body.template = { variables: templateVariables };
+				}
+
+				// Build permissions object
+				const permObj: Record<string, unknown> = {};
+				if (ownerEmail.trim()) permObj.ownerEmail = ownerEmail.trim();
+				if (collaborators) permObj.collaborators = collaborators;
+				if (isPublicRead) permObj.isPublicRead = true;
+				if (Object.keys(permObj).length > 0) {
+					body.permissions = permObj;
 				}
 
 				const createResponse = (await this.helpers.httpRequest({
