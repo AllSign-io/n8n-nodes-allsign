@@ -1,9 +1,9 @@
 import type {
-	IDataObject,
-	IExecuteFunctions,
-	INodeExecutionData,
-	INodeType,
-	INodeTypeDescription,
+    IDataObject,
+    IExecuteFunctions,
+    INodeExecutionData,
+    INodeType,
+    INodeTypeDescription,
 } from 'n8n-workflow';
 import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
 
@@ -170,117 +170,83 @@ export class Allsign implements INodeType {
 				default: {},
 				placeholder: 'Add Signature Field',
 				description:
-					'Define where signatures should be placed on the document. Only assignable to signers with an email address. If empty, signers place fields manually.',
+					'Pre-posiciona campos de firma en el documento. Solo disponible para firmantes con email. Firmantes con solo WhatsApp colocan su firma manualmente al abrir el link.',
 				options: [
 					{
 						name: 'fieldValues',
 						displayName: 'Field',
 						values: [
 							{
-								displayName: 'Placement Mode',
-								name: 'placementMode',
-								type: 'options',
-								default: 'coordinates',
-								options: [
+						displayName: 'All Pages',
+						name: 'includeInAllPages',
+						type: 'boolean',
+						default: false,
+						description: 'Whether to place this field on every page of the document',
+							},
+							{
+						displayName: 'Anchor Text',
+						name: 'anchorString',
+						type: 'string',
+						default: '',
+						placeholder: 'e.g. Firma del Cliente',
+						description: 'Text to search for in the PDF	—	the signature field will be placed where this text appears',
+							},
+							{
+						displayName: 'Height',
+						name: 'height',
+						type: 'number',
+						default: 100,
+						description: 'Height of the signature field in points. Width is auto-calculated (2:1 ratio).',
+							},
+							{
+						displayName: 'Page Number',
+						name: 'pageNumber',
+						type: 'number',
+						default: 1,
+						description: 'Page where the signature field should be placed (starts at 1). Ignored when All Pages is enabled.',
+							},
+							{
+						displayName: 'Placement Mode',
+						name: 'placementMode',
+						type: 'options',
+						default: 'coordinates',
+						options: [
 									{
 										name: 'Anchor Text',
 										value: 'anchor',
-										description:
-											'Place field where a specific text is found in the PDF',
+										description: 'Place field where a specific text is found in the PDF',
 									},
 									{
 										name: 'Coordinates (X, Y)',
 										value: 'coordinates',
 										description: 'Place field at specific X, Y coordinates on a page',
 									},
-								],
+								]
 							},
 							{
-								displayName: 'Signer Email',
-								name: 'participantEmail',
-								type: 'string',
-								default: '',
-								required: true,
-								placeholder: 'name@email.com',
-								description:
-									'Email of the signer this field belongs to (must match a signer email above). Signature fields can only be pre-assigned to signers with email addresses.',
+						displayName: 'Signer Email',
+						name: 'participantEmail',
+						type: 'string',
+						default: '',
+							required:	true,
+						placeholder: 'name@email.com',
+						description: 'Email del firmante al que pertenece este campo (debe coincidir con el email de un firmante de arriba)',
 							},
 							{
-								displayName: 'Page Number',
-								name: 'pageNumber',
-								type: 'number',
-								default: 1,
-								typeOptions: {
-									minValue: 1,
-								},
-								description:
-									'Page where the signature field should be placed (starts at 1). Ignored when All Pages is enabled.',
-								displayOptions: {
-									show: {
-										placementMode: ['coordinates'],
-									},
-								},
+						displayName: 'X Position',
+						name: 'x',
+						type: 'number',
+						default: 100,
+						description: 'Horizontal position in points from left edge of page',
 							},
 							{
-								displayName: 'X Position',
-								name: 'x',
-								type: 'number',
-								default: 100,
-								description: 'Horizontal position in points from left edge of page',
-								displayOptions: {
-									show: {
-										placementMode: ['coordinates'],
-									},
-								},
+						displayName: 'Y Position',
+						name: 'y',
+						type: 'number',
+						default: 500,
+						description: 'Vertical position in points from top edge of page',
 							},
-							{
-								displayName: 'Y Position',
-								name: 'y',
-								type: 'number',
-								default: 500,
-								description: 'Vertical position in points from top edge of page',
-								displayOptions: {
-									show: {
-										placementMode: ['coordinates'],
-									},
-								},
-							},
-							{
-								displayName: 'All Pages',
-								name: 'includeInAllPages',
-								type: 'boolean',
-								default: false,
-								description:
-									'Whether to place this field on every page of the document',
-								displayOptions: {
-									show: {
-										placementMode: ['coordinates'],
-									},
-								},
-							},
-							{
-								displayName: 'Anchor Text',
-								name: 'anchorString',
-								type: 'string',
-								default: '',
-								placeholder: 'e.g. Firma del Cliente',
-								description:
-									'Text to search for in the PDF — the signature field will be placed where this text appears',
-								displayOptions: {
-									show: {
-										placementMode: ['anchor'],
-									},
-								},
-							},
-							{
-								displayName: 'Height',
-								name: 'height',
-								type: 'number',
-								default: 100,
-								description:
-									'Height of the signature field in points. Width is auto-calculated (2:1 ratio).',
-							},
-						],
+					],
 					},
 				],
 			},
@@ -479,8 +445,7 @@ export class Allsign implements INodeType {
 						type: 'string',
 						default: '',
 						placeholder: 'e.g. 550e8400-e29b-41d4-a716-446655440000',
-						description:
-							'UUID of an existing folder.',
+						description: 'UUID of an existing folder',
 					},
 					{
 						displayName: 'Folder Name',
@@ -488,8 +453,7 @@ export class Allsign implements INodeType {
 						type: 'string',
 						default: '',
 						placeholder: 'e.g. Contracts 2026',
-						description:
-							'Name of the folder. If it doesn\'t exist, it will be created automatically',
+						description: 'Name of the folder. If it doesn\'t exist, it will be created automatically.',
 					},
 				],
 			},
@@ -674,13 +638,18 @@ export class Allsign implements INodeType {
 					return fieldObj;
 				});
 
-				// Build request body — no deprecated sendByEmail/sendByWhatsapp
+				// Note: User-configured fields and auto-generated fields are both
+				// added AFTER document creation via /signature-fields endpoint,
+				// because the create body cannot contain fields without participants.
+
+				// Build request body — document only, NO participants in create
+				// Participants are added via /add-signer endpoint after creation
+				// to avoid the Temporal workflow 500 error in doc_setup_participants.
 				const hasParticipants = participants.length > 0;
-				const startAtStep = hasParticipants ? 2 : 1;
 
 				const configObj: Record<string, unknown> = {
 					sendInvitations: false,
-					startAtStep,
+					startAtStep: 1,
 				};
 
 				if (expiresAt) {
@@ -692,14 +661,12 @@ export class Allsign implements INodeType {
 						base64Content: fileBase64,
 						name: fileName.endsWith('.pdf') ? fileName : `${documentName}.pdf`,
 					},
-					participants,
 					signatureValidation,
 					config: configObj,
 				};
 
-				if (fields.length > 0) {
-					body.fields = fields;
-				}
+				// Fields are NEVER included in the create body — they are added
+				// via /signature-fields endpoint after signers are registered.
 
 				if (folderId.trim()) {
 					body.folderId = folderId.trim();
@@ -708,7 +675,7 @@ export class Allsign implements INodeType {
 				}
 
 				if (templateVariables) {
-					body.template = { variables: templateVariables };
+					body.placeholders = templateVariables;
 				}
 
 				// Build permissions object
@@ -720,51 +687,190 @@ export class Allsign implements INodeType {
 					body.permissions = permObj;
 				}
 
-				const createResponse = (await this.helpers.httpRequest({
-					method: 'POST',
-					headers: authHeaders,
-					url: `${baseUrl}/v2/documents/`,
-					body,
-					json: true,
-				})) as IDataObject;
-
-				const documentId = createResponse.id as string;
-
-				// Step 2: Send invitations via invite-bulk (auto-detects channel per participant)
-				if (sendInvitations && hasParticipants && documentId) {
-					const inviteBody = {
-						participants: participants.map((p) => {
-							const part: Record<string, string> = {};
-							if (p.email) part.email = p.email;
-							if (p.whatsapp) part.whatsapp = p.whatsapp;
-							if (p.name) part.name = p.name;
-							return part;
-						}),
-						config: {
-							sendInvitationByEmail: true,
-							sendInvitationByWhatsapp: true,
-						},
-					};
-
+				// ── Step 1: Create the document (no participants) ──────────────
+				let createResponse: IDataObject;
+				try {
+					createResponse = (await this.helpers.httpRequest({
+						method: 'POST',
+						headers: authHeaders,
+						url: `${baseUrl}/v2/documents/`,
+						body,
+						json: true,
+					})) as IDataObject;
+				} catch (createError) {
+					const cErr = createError as Record<string, unknown>;
+					const message = (cErr.message as string) || 'Unknown error';
+					let responseInfo = '';
 					try {
-						const inviteResponse = (await this.helpers.httpRequest({
-							method: 'POST',
-							headers: authHeaders,
-							url: `${baseUrl}/v2/documents/${documentId}/invite-bulk`,
-							body: inviteBody,
-							json: true,
-						})) as IDataObject;
+						const resp = cErr.response as Record<string, unknown> | undefined;
+						if (resp) {
+							const respBody = resp.body || resp.data;
+							responseInfo = typeof respBody === 'string' ? respBody : JSON.stringify(respBody || '');
+						}
+					} catch { /* ignore */ }
+					throw new NodeOperationError(this.getNode(), `Document creation failed: ${message}${responseInfo ? ` — ${responseInfo}` : ''}`);
+				}
 
-						createResponse.invitations = inviteResponse;
-					} catch (inviteError) {
-						const invErr = inviteError as { message?: string };
-						createResponse.invitationError =
-							invErr.message || 'Failed to send invitations';
+				const docId = createResponse.id as string;
+
+				// ── Step 2: Add signers via /add-signer endpoint ──────────────
+				if (hasParticipants) {
+					// Resolve inviter email (needed for add-signer and invite-bulk)
+					let inviterEmail = ownerEmail.trim();
+					if (!inviterEmail) {
+						try {
+							const securityInfo = (await this.helpers.httpRequest({
+								method: 'GET',
+								headers: authHeaders,
+								url: `${baseUrl}/v2/test/security`,
+								json: true,
+							})) as IDataObject;
+							inviterEmail = (securityInfo.authenticatedUser as string) || '';
+						} catch {
+							// Fallback: leave empty
+						}
+					}
+
+					for (const p of participants) {
+						const signerBody: Record<string, string> = {
+							invitedByEmail: inviterEmail,
+						};
+						if ((p as Record<string, string>).email) {
+							signerBody.signerEmail = (p as Record<string, string>).email;
+						}
+						if ((p as Record<string, string>).whatsapp) {
+							signerBody.signerPhone = (p as Record<string, string>).whatsapp;
+						}
+
+						try {
+							await this.helpers.httpRequest({
+								method: 'POST',
+								headers: authHeaders,
+								url: `${baseUrl}/v2/documents/${docId}/add-signer`,
+								body: signerBody,
+								json: true,
+							});
+						} catch {
+							// Signer may already exist — continue
+						}
+					}
+
+					// ── Step 3: Add signature fields ─────────────────────────
+					// Add user-configured fields via /signature-fields endpoint
+					// (converting from create-body format to endpoint format)
+					if (fieldsData.length > 0) {
+						for (const f of fields) {
+							const fAny = f as Record<string, unknown>;
+							const pos = fAny.position as Record<string, number> | undefined;
+							const fieldBody: Record<string, unknown> = {
+								signerEmail: fAny.participantEmail,
+								x: pos ? pos.x : 100,
+								y: pos ? pos.y : 500,
+								pageNumber: (fAny.pageNumber as number) || 1,
+								height: (fAny.height as number) || 100,
+								width: 200,
+							};
+							if (fAny.anchorString) {
+								fieldBody.anchorString = fAny.anchorString;
+							}
+							if (fAny.includeInAllPages) {
+								fieldBody.includeInAllPages = true;
+							}
+							try {
+								await this.helpers.httpRequest({
+									method: 'POST',
+									headers: authHeaders,
+									url: `${baseUrl}/v2/documents/${docId}/signature-fields`,
+									body: fieldBody,
+									json: true,
+								});
+							} catch {
+								// Field creation failed — continue
+							}
+						}
+					} else {
+						// Auto-generate a default field for EVERY signer
+						for (let idx = 0; idx < signersData.length; idx++) {
+							const signer = signersData[idx];
+							const fieldBody: Record<string, unknown> = {
+								x: 100,
+								y: 500 + (idx * 80),
+								pageNumber: 1,
+								height: 60,
+								width: 200,
+							};
+							if (signer.email && signer.email.trim()) {
+								fieldBody.signerEmail = signer.email.trim();
+							} else if (signer.whatsapp && signer.whatsapp.trim()) {
+								fieldBody.signerPhone = signer.whatsapp.trim();
+							}
+							try {
+								await this.helpers.httpRequest({
+									method: 'POST',
+									headers: authHeaders,
+									url: `${baseUrl}/v2/documents/${docId}/signature-fields`,
+									body: fieldBody,
+									json: true,
+								});
+							} catch {
+								// Field creation failed — continue
+							}
+						}
+					}
+
+					// ── Step 4: Send invitations via invite-bulk ─────────────
+					if (sendInvitations) {
+						// invite-bulk enforces single-channel per participant:
+						// email OR whatsapp, not both. Email takes priority.
+						const inviteParticipants = participants.map((p: Record<string, string>) => {
+							const invP: Record<string, string> = { name: p.name };
+							if (p.email) {
+								invP.email = p.email;
+							} else if (p.whatsapp) {
+								invP.whatsapp = p.whatsapp;
+							}
+							return invP;
+						});
+
+						try {
+							const inviteResponse = (await this.helpers.httpRequest({
+								method: 'POST',
+								headers: authHeaders,
+								url: `${baseUrl}/v2/documents/${docId}/invite-bulk`,
+								body: {
+									participants: inviteParticipants,
+									config: {
+										invitedByEmail: inviterEmail,
+									},
+								},
+								json: true,
+							})) as IDataObject;
+
+							createResponse.invitations = inviteResponse;
+						} catch (inviteError) {
+							const invErr = inviteError as {
+								message?: string;
+								response?: { data?: unknown; status?: number };
+							};
+							const detail = invErr.response?.data
+								? JSON.stringify(invErr.response.data)
+								: invErr.message || 'Failed to send invitations';
+							createResponse.invitationError = detail;
+						}
 					}
 				}
 
 				returnData.push({ json: createResponse });
 			} catch (error) {
+				// Re-throw NodeOperationErrors directly (from our inner catch blocks)
+				if (error instanceof NodeOperationError) {
+					if (this.continueOnFail()) {
+						returnData.push({ json: { error: (error as Error).message } });
+						continue;
+					}
+					throw error;
+				}
+
 				if (this.continueOnFail()) {
 					returnData.push({ json: { error: (error as Error).message } });
 					continue;
