@@ -24,6 +24,14 @@ export class AllSignApi implements ICredentialType {
             description: 'Your AllSign API Key. Visit your <a href="https://dashboard.allsign.io/developers/api-keys">AllSign Dashboard</a> to generate a key.',
         },
         {
+            displayName: 'Owner Email',
+            name: 'ownerEmail',
+            type: 'string',
+            default: '',
+            placeholder: 'legal@company.com',
+            description: 'Email of the API key owner. Used as the inviter in signing invitations (appears in email subject and WhatsApp messages).',
+        },
+        {
             displayName: 'Base URL',
             name: 'baseUrl',
             type: 'string',
