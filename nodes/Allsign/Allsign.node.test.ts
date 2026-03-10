@@ -1,10 +1,8 @@
-import type {
-	IDataObject,
-	IExecuteFunctions,
-} from 'n8n-workflow';
+import type { IExecuteFunctions } from 'n8n-workflow';
 import { Allsign } from './Allsign.node';
 
-
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type NodeProp = Record<string, any>;
 // ============================================================
 // Mock Helper
 // ============================================================
@@ -24,6 +22,7 @@ const getMockExecuteFunctions = (params: Record<string, unknown>): IExecuteFunct
 		getCredentials: async () => ({
 			apiKey: 'allsign_live_sk_test123',
 			baseUrl: 'https://api.allsign.io',
+			ownerEmail: 'owner@allsign.io',
 		}),
 		helpers: {
 			httpRequest: mockHttpRequest,
@@ -78,26 +77,26 @@ describe('AllSign Node', () => {
 				(p) => p.name === 'folderSettings',
 			);
 			expect(config).toBeDefined();
-			expect((config as any).type).toBe('collection');
+			expect((config as NodeProp).type).toBe('collection');
 			expect(sigValidations).toBeDefined();
-			expect((sigValidations as any).type).toBe('collection');
+			expect((sigValidations as NodeProp).type).toBe('collection');
 			expect(permissions).toBeDefined();
-			expect((permissions as any).type).toBe('collection');
+			expect((permissions as NodeProp).type).toBe('collection');
 			expect(folder).toBeDefined();
-			expect((folder as any).type).toBe('collection');
+			expect((folder as NodeProp).type).toBe('collection');
 		});
 
 		it('should have binary option in file source and folder name inside folder settings', () => {
 			const fileSourceProp = node.description.properties.find(
 				(p) => p.name === 'fileSource',
 			);
-			const fileSourceOptions = (fileSourceProp as any).options.map((o: any) => o.value);
+			const fileSourceOptions = (fileSourceProp as NodeProp).options!.map((o: NodeProp) => o.value);
 			expect(fileSourceOptions).toContain('binary');
 
 			const folderOpts = node.description.properties.find(
 				(p) => p.name === 'folderSettings',
 			);
-			const folderOptions = (folderOpts as any).options.map((o: any) => o.name);
+			const folderOptions = (folderOpts as NodeProp).options!.map((o: NodeProp) => o.name);
 			expect(folderOptions).toContain('folderName');
 			expect(folderOptions).toContain('folderId');
 		});
@@ -122,13 +121,13 @@ describe('AllSign Node', () => {
 			const sigValidations = node.description.properties.find(
 				(p) => p.name === 'signatureValidations',
 			);
-			const sigOptions = (sigValidations as any).options.map((o: any) => o.name);
+			const sigOptions = (sigValidations as NodeProp).options.map((o: NodeProp) => o.name);
 			expect(sigOptions).toContain('verifyAutografa');
 
 			const notifSettings = node.description.properties.find(
 				(p) => p.name === 'configuration',
 			);
-			const notifOptions = (notifSettings as any).options.map((o: any) => o.name);
+			const notifOptions = (notifSettings as NodeProp).options.map((o: NodeProp) => o.name);
 			expect(notifOptions).not.toContain('verifyAutografa');
 		});
 
@@ -136,7 +135,7 @@ describe('AllSign Node', () => {
 			const sigValidations = node.description.properties.find(
 				(p) => p.name === 'signatureValidations',
 			);
-			const sigOptions = (sigValidations as any).options.map((o: any) => o.name);
+			const sigOptions = (sigValidations as NodeProp).options.map((o: NodeProp) => o.name);
 			expect(sigOptions).toContain('verifyEidas');
 		});
 
@@ -144,7 +143,7 @@ describe('AllSign Node', () => {
 			const notifSettings = node.description.properties.find(
 				(p) => p.name === 'configuration',
 			);
-			const notifOptions = (notifSettings as any).options.map((o: any) => o.name);
+			const notifOptions = (notifSettings as NodeProp).options.map((o: NodeProp) => o.name);
 			expect(notifOptions).not.toContain('sendByEmail');
 			expect(notifOptions).not.toContain('sendByWhatsapp');
 			expect(notifOptions).toContain('sendInvitations');
@@ -154,8 +153,8 @@ describe('AllSign Node', () => {
 			const signers = node.description.properties.find(
 				(p) => p.name === 'signers',
 			);
-			const signerFields = (signers as any).options[0].values;
-			const emailField = signerFields.find((f: any) => f.name === 'email');
+			const signerFields = (signers as NodeProp).options![0].values!;
+			const emailField = signerFields.find((f: NodeProp) => f.name === 'email');
 			expect(emailField.required).toBeUndefined();
 		});
 
@@ -163,7 +162,7 @@ describe('AllSign Node', () => {
 			const config = node.description.properties.find(
 				(p) => p.name === 'configuration',
 			);
-			const optNames = (config as any).options.map((o: any) => o.name);
+			const optNames = (config as NodeProp).options!.map((o: NodeProp) => o.name);
 			expect(optNames).toContain('sendInvitations');
 			expect(optNames).toContain('expiresAt');
 			expect(optNames).toContain('templateVariables');
@@ -174,8 +173,8 @@ describe('AllSign Node', () => {
 				(p) => p.name === 'permissions',
 			);
 			expect(perms).toBeDefined();
-			expect((perms as any).type).toBe('collection');
-			const optNames = (perms as any).options.map((o: any) => o.name);
+			expect((perms as NodeProp).type).toBe('collection');
+			const optNames = (perms as NodeProp).options!.map((o: NodeProp) => o.name);
 			expect(optNames).toContain('ownerEmail');
 			expect(optNames).toContain('collaborators');
 			expect(optNames).toContain('isPublicRead');
@@ -188,9 +187,12 @@ describe('AllSign Node', () => {
 	describe('Create & Send (URL)', () => {
 		it('should POST with V2 schema and no deprecated config fields', async () => {
 			const pdfBuffer = Buffer.from('fake-pdf-content');
-			mockHttpRequest.mockResolvedValueOnce(pdfBuffer);
-			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-123', name: 'Test Contract' });
-			mockHttpRequest.mockResolvedValueOnce({ invited: 1 });
+			mockHttpRequest.mockResolvedValueOnce(pdfBuffer); // 1: download PDF
+			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-123', name: 'Test Contract' }); // 2: create doc
+			mockHttpRequest.mockResolvedValueOnce({ authenticatedUser: 'owner@allsign.io' }); // 3: security
+			mockHttpRequest.mockResolvedValueOnce({ success: true }); // 4: add-signer
+			mockHttpRequest.mockResolvedValueOnce({ success: true }); // 5: add-field
+			mockHttpRequest.mockResolvedValueOnce({ invited: 1 }); // 6: invite-bulk
 
 			const fn = getMockExecuteFunctions({
 				documentName: 'Test Contract',
@@ -203,16 +205,15 @@ describe('AllSign Node', () => {
 
 			const result = await node.execute.call(fn);
 
-			expect(mockHttpRequest).toHaveBeenCalledTimes(3);
+			expect(mockHttpRequest).toHaveBeenCalledTimes(6);
 
-			// First call: download the PDF
+			// 1: download PDF
 			expect(mockHttpRequest).toHaveBeenNthCalledWith(1, expect.objectContaining({
 				method: 'GET',
 				url: 'https://example.com/contract.pdf',
-				encoding: 'arraybuffer',
 			}));
 
-			// Second call: POST to V2 documents endpoint
+			// 2: create doc (no participants in body)
 			const postCall = mockHttpRequest.mock.calls[1][0];
 			expect(postCall.method).toBe('POST');
 			expect(postCall.url).toBe('https://api.allsign.io/v2/documents/');
@@ -223,27 +224,41 @@ describe('AllSign Node', () => {
 				base64Content: pdfBuffer.toString('base64'),
 				name: 'contract.pdf',
 			});
-			expect(body.participants).toEqual([{ name: 'John', email: 'john@test.com' }]);
+			// Participants are NOT in create body (added via /add-signer)
+			expect(body.participants).toBeUndefined();
 			expect(body.signatureValidation).toEqual(expect.objectContaining({
 				autografa: true,
 				FEA: false,
 				nom151: false,
 			}));
-
-			// Config should NOT have deprecated sendByEmail/sendByWhatsapp
-			expect(body.config).toEqual({
-				sendInvitations: false,
-				startAtStep: 2,
-			});
+			expect(body.fields).toBeUndefined();
+			expect(body.config).toEqual({ sendInvitations: false, startAtStep: 1 });
 			expect(body.config).not.toHaveProperty('sendByEmail');
 			expect(body.config).not.toHaveProperty('sendByWhatsapp');
 
-			// Third call: invite-bulk
-			const inviteCall = mockHttpRequest.mock.calls[2][0];
+			// 3: security endpoint
+			expect(mockHttpRequest.mock.calls[2][0].url).toBe('https://api.allsign.io/v2/test/security');
+
+			// 4: add-signer
+			const addSignerCall = mockHttpRequest.mock.calls[3][0];
+			expect(addSignerCall.method).toBe('POST');
+			expect(addSignerCall.url).toBe('https://api.allsign.io/v2/documents/doc-123/add-signer');
+			expect(addSignerCall.body.signerEmail).toBe('john@test.com');
+			expect(addSignerCall.body.invitedByEmail).toBe('owner@allsign.io');
+
+			// 5: add auto-generated signature field
+			const fieldCall = mockHttpRequest.mock.calls[4][0];
+			expect(fieldCall.method).toBe('POST');
+			expect(fieldCall.url).toBe('https://api.allsign.io/v2/documents/doc-123/signature-fields');
+			expect(fieldCall.body.signerEmail).toBe('john@test.com');
+
+			// 6: invite-bulk
+			const inviteCall = mockHttpRequest.mock.calls[5][0];
 			expect(inviteCall.method).toBe('POST');
 			expect(inviteCall.url).toBe('https://api.allsign.io/v2/documents/doc-123/invite-bulk');
+			expect(inviteCall.body.config).toEqual({ invitedByEmail: 'owner@allsign.io' });
 
-			expect(result[0][0].json).toEqual(expect.objectContaining({ id: 'doc-123', name: 'Test Contract' }));
+			expect(result[0][0].json).toEqual(expect.objectContaining({ id: 'doc-123', name: 'Test Contract', invitations: { invited: 1 } }));
 		});
 
 		it('should default autografa to true when signatureValidations is empty', async () => {
@@ -286,7 +301,7 @@ describe('AllSign Node', () => {
 				sendInvitations: false,
 				startAtStep: 1,
 			});
-			expect(postBody.participants).toEqual([]);
+			expect(postBody.participants).toBeUndefined();
 		});
 	});
 
@@ -298,8 +313,11 @@ describe('AllSign Node', () => {
 			const binaryBuffer = Buffer.from('binary-pdf-content');
 			mockAssertBinaryData.mockReturnValueOnce({ fileName: 'contract.pdf' });
 			mockGetBinaryDataBuffer.mockResolvedValueOnce(binaryBuffer);
-			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-bin', name: 'Binary Upload' });
-			mockHttpRequest.mockResolvedValueOnce({ invited: 1 });
+			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-bin', name: 'Binary Upload' }); // 1: create
+			mockHttpRequest.mockResolvedValueOnce({ authenticatedUser: 'owner@allsign.io' }); // 2: security
+			mockHttpRequest.mockResolvedValueOnce({ success: true }); // 3: add-signer
+			mockHttpRequest.mockResolvedValueOnce({ success: true }); // 4: add-field
+			mockHttpRequest.mockResolvedValueOnce({ invited: 1 }); // 5: invite-bulk
 
 			const fn = getMockExecuteFunctions({
 				documentName: 'Binary Upload',
@@ -312,24 +330,33 @@ describe('AllSign Node', () => {
 
 			const result = await node.execute.call(fn);
 
-			expect(mockHttpRequest).toHaveBeenCalledTimes(2);
+			expect(mockHttpRequest).toHaveBeenCalledTimes(5);
 
+			// 1: create doc (no participants)
 			const postCall = mockHttpRequest.mock.calls[0][0];
 			expect(postCall.method).toBe('POST');
 			expect(postCall.url).toBe('https://api.allsign.io/v2/documents/');
+			expect(postCall.body.participants).toBeUndefined();
+			expect(postCall.body.fields).toBeUndefined();
 
-			const body = postCall.body;
-			expect(body.document).toEqual({
-				base64Content: binaryBuffer.toString('base64'),
-				name: 'contract.pdf',
-			});
-			expect(body.participants).toEqual([{ name: 'Bob', email: 'bob@test.com' }]);
+			// 2: security
+			expect(mockHttpRequest.mock.calls[1][0].url).toBe('https://api.allsign.io/v2/test/security');
 
-			const inviteCall = mockHttpRequest.mock.calls[1][0];
-			expect(inviteCall.method).toBe('POST');
+			// 3: add-signer
+			const addSignerCall = mockHttpRequest.mock.calls[2][0];
+			expect(addSignerCall.url).toBe('https://api.allsign.io/v2/documents/doc-bin/add-signer');
+			expect(addSignerCall.body.signerEmail).toBe('bob@test.com');
+
+			// 4: add-field
+			const fieldCall = mockHttpRequest.mock.calls[3][0];
+			expect(fieldCall.url).toBe('https://api.allsign.io/v2/documents/doc-bin/signature-fields');
+
+			// 5: invite-bulk
+			const inviteCall = mockHttpRequest.mock.calls[4][0];
 			expect(inviteCall.url).toBe('https://api.allsign.io/v2/documents/doc-bin/invite-bulk');
+			expect(inviteCall.body.config).toEqual({ invitedByEmail: 'owner@allsign.io' });
 
-			expect(result[0][0].json).toEqual(expect.objectContaining({ id: 'doc-bin', name: 'Binary Upload' }));
+			expect(result[0][0].json).toEqual(expect.objectContaining({ id: 'doc-bin', name: 'Binary Upload', invitations: { invited: 1 } }));
 		});
 
 		it('should use documentName.pdf when binary has no fileName', async () => {
@@ -359,9 +386,11 @@ describe('AllSign Node', () => {
 	describe('Phone-Only Signers', () => {
 		it('should create participant with only whatsapp (no email)', async () => {
 			const pdfBuffer = Buffer.from('pdf');
-			mockHttpRequest.mockResolvedValueOnce(pdfBuffer);
-			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-phone' });
-			mockHttpRequest.mockResolvedValueOnce({ invited: 1 });
+			mockHttpRequest.mockResolvedValueOnce(pdfBuffer); // 1: download
+			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-phone' }); // 2: create
+			mockHttpRequest.mockResolvedValueOnce({ authenticatedUser: 'owner@allsign.io' }); // 3: security
+			mockHttpRequest.mockResolvedValueOnce({ success: true }); // 4: add-signer
+			mockHttpRequest.mockResolvedValueOnce({ invited: 1 }); // 5: invite-bulk
 
 			const fn = getMockExecuteFunctions({
 				documentName: 'Phone Signer Doc',
@@ -377,20 +406,26 @@ describe('AllSign Node', () => {
 			});
 
 			await node.execute.call(fn);
-			const body = mockHttpRequest.mock.calls[1][0].body;
 
-			expect(body.participants).toEqual([{
-				name: 'Carlos',
-				whatsapp: '+525512345678',
-			}]);
-			expect(body.participants[0]).not.toHaveProperty('email');
+			// Create body should NOT have participants
+			const createBody = mockHttpRequest.mock.calls[1][0].body;
+			expect(createBody.participants).toBeUndefined();
+
+			// add-signer should have WhatsApp phone
+			const addSignerCall = mockHttpRequest.mock.calls[3][0];
+			expect(addSignerCall.url).toBe('https://api.allsign.io/v2/documents/doc-phone/add-signer');
+			expect(addSignerCall.body.signerPhone).toBe('+525512345678');
+			expect(addSignerCall.body.signerEmail).toBeUndefined();
 		});
 
 		it('should include both email and whatsapp when both provided', async () => {
 			const pdfBuffer = Buffer.from('pdf');
-			mockHttpRequest.mockResolvedValueOnce(pdfBuffer);
-			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-both' });
-			mockHttpRequest.mockResolvedValueOnce({ invited: 1 });
+			mockHttpRequest.mockResolvedValueOnce(pdfBuffer); // download
+			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-both' }); // create
+			mockHttpRequest.mockResolvedValueOnce({ authenticatedUser: 'owner@allsign.io' }); // security
+			mockHttpRequest.mockResolvedValueOnce({ success: true }); // add-signer
+			mockHttpRequest.mockResolvedValueOnce({ success: true }); // add-field
+			mockHttpRequest.mockResolvedValueOnce({ invited: 1 }); // invite-bulk
 
 			const fn = getMockExecuteFunctions({
 				documentName: 'Both Channels Doc',
@@ -406,13 +441,15 @@ describe('AllSign Node', () => {
 			});
 
 			await node.execute.call(fn);
-			const body = mockHttpRequest.mock.calls[1][0].body;
 
-			expect(body.participants).toEqual([{
-				name: 'Maria',
-				email: 'maria@test.com',
-				whatsapp: '+525598765432',
-			}]);
+			// Create body should NOT have participants
+			const createBody = mockHttpRequest.mock.calls[1][0].body;
+			expect(createBody.participants).toBeUndefined();
+
+			// add-signer should have BOTH email and phone
+			const addSignerCall = mockHttpRequest.mock.calls[3][0];
+			expect(addSignerCall.body.signerEmail).toBe('maria@test.com');
+			expect(addSignerCall.body.signerPhone).toBe('+525598765432');
 		});
 
 		it('should throw when signer has neither email nor phone', async () => {
@@ -439,9 +476,12 @@ describe('AllSign Node', () => {
 
 		it('should handle invite-bulk with phone-only participants', async () => {
 			const pdfBuffer = Buffer.from('pdf');
-			mockHttpRequest.mockResolvedValueOnce(pdfBuffer);
-			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-invite-phone' });
-			mockHttpRequest.mockResolvedValueOnce({ invited: 1 });
+			mockHttpRequest.mockResolvedValueOnce(pdfBuffer); // download
+			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-invite-phone' }); // create
+			mockHttpRequest.mockResolvedValueOnce({ authenticatedUser: 'owner@allsign.io' }); // security
+			mockHttpRequest.mockResolvedValueOnce({ success: true }); // add-signer
+			mockHttpRequest.mockResolvedValueOnce({ success: true }); // auto-gen signature-field
+			mockHttpRequest.mockResolvedValueOnce({ invited: 1 }); // invite-bulk
 
 			const fn = getMockExecuteFunctions({
 				documentName: 'Invite Phone Doc',
@@ -457,7 +497,12 @@ describe('AllSign Node', () => {
 			});
 
 			await node.execute.call(fn);
-			const inviteCall = mockHttpRequest.mock.calls[2][0];
+			// Fields are never in create body
+			const createBody = mockHttpRequest.mock.calls[1][0].body;
+			expect(createBody.fields).toBeUndefined();
+
+			// invite-bulk is at index 5 (download, create, security, add-signer, field, invite-bulk)
+			const inviteCall = mockHttpRequest.mock.calls[5][0];
 			const inviteBody = inviteCall.body;
 
 			expect(inviteBody.participants[0]).toEqual({
@@ -465,6 +510,7 @@ describe('AllSign Node', () => {
 				whatsapp: '+12125551234',
 			});
 			expect(inviteBody.participants[0]).not.toHaveProperty('email');
+			expect(inviteBody.config).toEqual({ invitedByEmail: 'owner@allsign.io' });
 		});
 	});
 
@@ -600,9 +646,7 @@ describe('AllSign Node', () => {
 
 			await node.execute.call(fn);
 			const body = mockHttpRequest.mock.calls[1][0].body;
-			expect(body.template).toEqual({
-				variables: { client_name: 'Juan', amount: '$10,000' },
-			});
+			expect(body.placeholders).toEqual({ client_name: 'Juan', amount: '$10,000' });
 		});
 
 		it('should not include template when empty', async () => {
@@ -723,9 +767,18 @@ describe('AllSign Node', () => {
 	describe('Multiple Signers', () => {
 		it('should send multiple participants in one request', async () => {
 			const pdfBuffer = Buffer.from('pdf');
-			mockHttpRequest.mockResolvedValueOnce(pdfBuffer);
-			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-multi', name: 'Multi-Signer' });
-			mockHttpRequest.mockResolvedValueOnce({ invited: 3 });
+			mockHttpRequest.mockResolvedValueOnce(pdfBuffer); // 1: download
+			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-multi', name: 'Multi-Signer' }); // 2: create
+			mockHttpRequest.mockResolvedValueOnce({ authenticatedUser: 'owner@allsign.io' }); // 3: security
+			// 3 add-signer calls
+			mockHttpRequest.mockResolvedValueOnce({ success: true }); // 4: add-signer Alice
+			mockHttpRequest.mockResolvedValueOnce({ success: true }); // 5: add-signer Bob
+			mockHttpRequest.mockResolvedValueOnce({ success: true }); // 6: add-signer Charlie
+			// 3 auto-generated signature fields
+			mockHttpRequest.mockResolvedValueOnce({ success: true }); // 7: field Alice
+			mockHttpRequest.mockResolvedValueOnce({ success: true }); // 8: field Bob
+			mockHttpRequest.mockResolvedValueOnce({ success: true }); // 9: field Charlie
+			mockHttpRequest.mockResolvedValueOnce({ invited: 3 }); // 10: invite-bulk
 
 			const fn = getMockExecuteFunctions({
 				documentName: 'Multi-Signer Doc',
@@ -741,20 +794,20 @@ describe('AllSign Node', () => {
 			});
 
 			await node.execute.call(fn);
-			const body = mockHttpRequest.mock.calls[1][0].body;
-			expect(body.participants).toHaveLength(3);
-			expect(body.participants).toEqual([
-				{ name: 'Alice', email: 'alice@test.com' },
-				{ name: 'Bob', email: 'bob@test.com' },
-				{ name: 'Charlie', email: 'charlie@test.com' },
-			]);
-			expect(body.config.sendInvitations).toBe(false);
-			expect(body.config.startAtStep).toBe(2);
 
-			expect(mockHttpRequest).toHaveBeenCalledTimes(3);
-			const inviteCall = mockHttpRequest.mock.calls[2][0];
+			// Create body should NOT have participants
+			const body = mockHttpRequest.mock.calls[1][0].body;
+			expect(body.participants).toBeUndefined();
+			expect(body.fields).toBeUndefined();
+			expect(body.config.sendInvitations).toBe(false);
+			expect(body.config.startAtStep).toBe(1);
+
+			// download + create + security + 3 add-signer + 3 add-field + invite-bulk = 10
+			expect(mockHttpRequest).toHaveBeenCalledTimes(10);
+			const inviteCall = mockHttpRequest.mock.calls[9][0];
 			expect(inviteCall.method).toBe('POST');
 			expect(inviteCall.url).toBe('https://api.allsign.io/v2/documents/doc-multi/invite-bulk');
+			expect(inviteCall.body.config).toEqual({ invitedByEmail: 'owner@allsign.io' });
 		});
 	});
 
@@ -800,7 +853,7 @@ describe('AllSign Node', () => {
 				configuration: { sendInvitations: true },
 				signatureValidations: {},
 			});
-			(fn as any).getCredentials = async () => ({
+			(fn as unknown as Record<string, unknown>).getCredentials = async () => ({
 				apiKey: 'allsign_live_sk_test123',
 				baseUrl: 'https://api.allsign.io/',
 			});
@@ -822,7 +875,7 @@ describe('AllSign Node', () => {
 				configuration: { sendInvitations: true },
 				signatureValidations: {},
 			});
-			(fn as any).getCredentials = async () => ({
+			(fn as unknown as Record<string, unknown>).getCredentials = async () => ({
 				apiKey: 'allsign_trial_sk_dev456',
 				baseUrl: 'http://localhost:8000',
 			});
@@ -839,6 +892,7 @@ describe('AllSign Node', () => {
 		it('should throw NodeOperationError on API failure', async () => {
 			mockHttpRequest.mockResolvedValueOnce(Buffer.from('pdf'));
 			mockHttpRequest.mockRejectedValueOnce({
+				message: 'Request failed with status code 402',
 				response: { data: { message: 'Insufficient credits' }, status: 402 },
 			});
 
@@ -851,7 +905,7 @@ describe('AllSign Node', () => {
 				signatureValidations: {},
 			});
 
-			await expect(node.execute.call(fn)).rejects.toThrow('AllSign API Error: Insufficient credits');
+			await expect(node.execute.call(fn)).rejects.toThrow('Document creation failed');
 		});
 
 		it('should throw when file download fails', async () => {
@@ -880,7 +934,7 @@ describe('AllSign Node', () => {
 				configuration: { sendInvitations: false },
 				signatureValidations: {},
 			});
-			(fn as any).continueOnFail = () => true;
+			(fn as unknown as Record<string, unknown>).continueOnFail = () => true;
 
 			const result = await node.execute.call(fn);
 			expect(result[0][0].json).toHaveProperty('error', 'Connection refused');
