@@ -41,7 +41,11 @@
     "document signing",
     "folder",
     "contact",
-    "invite"
+    "invite",
+    "whatsapp",
+    "nda",
+    "template",
+    "docx"
   ],
   "resources": {
     "primaryDocumentation": [

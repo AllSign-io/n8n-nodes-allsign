@@ -120,7 +120,7 @@ npm install n8n-nodes-allsign
 ### Clone & Install
 
 ```bash
-git clone https://github.com/httpmfs/n8n-nodes-starter.git n8n-nodes-allsign
+git clone https://github.com/allsign/n8n-nodes-allsign.git n8n-nodes-allsign
 cd n8n-nodes-allsign
 npm install
 ```
@@ -132,7 +132,7 @@ npm install
 | `npm run dev`         | Start n8n with hot reload    |
 | `npm run build`       | Compile TypeScript → `dist/` |
 | `npm run build:watch` | Compile in watch mode        |
-| `npm test`            | Run unit tests (34 tests)    |
+| `npm test`            | Run unit tests (38 tests)    |
 | `npm run lint`        | Check code style             |
 
 ### ☁️ Cloudflare Tunnel (Remote Access / Acceso Remoto)
@@ -159,7 +159,7 @@ n8n-nodes-allsign/
 │   ├── Allsign/
 │   │   ├── Allsign.node.ts              # Main node (Create & Send)
 │   │   ├── Allsign.node.json            # Codex metadata & SEO
-│   │   ├── Allsign.node.test.ts         # Unit tests (34 tests)
+│   │   ├── Allsign.node.test.ts         # Unit tests (38 tests)
 │   │   └── allsign.svg                  # Node icon
 │   └── AllsignTrigger/
 │       ├── AllsignTrigger.node.ts       # Trigger node (webhooks + HMAC)

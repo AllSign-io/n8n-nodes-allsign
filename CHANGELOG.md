@@ -2,6 +2,24 @@
 
 All notable changes to `n8n-nodes-allsign` will be documented in this file.
 
+## [0.1.0] — 2026-03-11
+
+### ✨ Added
+
+- **eIDAS signature validation** — European Electronic Signature compliance toggle
+- **Template Variables (DOCX)** — Replace `{{ variables }}` in DOCX templates with dynamic values
+- **Expires At** — Set expiration deadlines for documents
+- **Permissions** — Owner email, collaborators, and public read options
+- **NDA Workflow Template** — Complete n8n workflow example in `examples/` (Form → DOCX Variables → AllSign)
+- **NDA DOCX Template** — Professional bilingual NDA with 6 template variables
+
+### 🔄 Changed
+
+- **Simplified WhatsApp input** — Single `WhatsApp` field replaces 3-field (Country Code + Custom Code + Phone) setup
+- **Autógrafa moved** — Now inside Signature Validations collection (from standalone toggle)
+- **32 codex aliases** — Added `whatsapp`, `nda`, `template`, `docx` for marketplace discoverability
+- **38 unit tests** — Up from 25, covering all new features
+
 ## [1.0.0-mvp.3] — 2026-02-26
 
 ### 🔧 Fixed

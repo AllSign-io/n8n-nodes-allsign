@@ -1,0 +1,278 @@
+{
+  "name": "Automate NDA Signing with Form Input and AllSign",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "NDA Request Form",
+        "formDescription": "Fill out this form to generate and send a Non-Disclosure Agreement for electronic signature via AllSign.\n\nComplete este formulario para generar y enviar un Acuerdo de Confidencialidad (NDA) para firma electrónica con AllSign.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Client Full Name",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "e.g. María García López"
+            },
+            {
+              "fieldLabel": "Client Email",
+              "fieldType": "email",
+              "requiredField": true,
+              "placeholder": "e.g. maria@company.com"
+            },
+            {
+              "fieldLabel": "Client WhatsApp (Optional)",
+              "fieldType": "text",
+              "requiredField": false,
+              "placeholder": "e.g. +525512345678"
+            },
+            {
+              "fieldLabel": "Company Name (Disclosing Party)",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "e.g. Acme Corp"
+            },
+            {
+              "fieldLabel": "Project Description",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "e.g. Software development collaboration for Project X"
+            },
+            {
+              "fieldLabel": "Effective Date",
+              "fieldType": "date",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Confidentiality Period",
+              "fieldType": "dropdown",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  { "option": "1 year" },
+                  { "option": "2 years" },
+                  { "option": "3 years" },
+                  { "option": "5 years" },
+                  { "option": "Indefinite" }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "Governing Law / Jurisdiction",
+              "fieldType": "dropdown",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  { "option": "Mexico City, Mexico" },
+                  { "option": "State of California, USA" },
+                  { "option": "Madrid, Spain" },
+                  { "option": "Bogotá, Colombia" },
+                  { "option": "Buenos Aires, Argentina" },
+                  { "option": "London, United Kingdom" }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {
+          "respondToWebhook": true,
+          "formSubmittedText": "✅ Your NDA has been created and sent for signature!\n\nThe signer will receive an invitation via email (and WhatsApp if provided) to review and sign the NDA electronically.\n\n--- \n✅ ¡Su NDA ha sido creado y enviado para firma!\n\nEl firmante recibirá una invitación por email (y WhatsApp si fue proporcionado) para revisar y firmar el NDA electrónicamente."
+        }
+      },
+      "id": "form-trigger",
+      "name": "NDA Request Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [220, 300],
+      "webhookId": "nda-form-allsign"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "set-doc-name",
+              "name": "documentName",
+              "value": "=NDA - {{ $json['Client Full Name'] }} - {{ $json['Company Name (Disclosing Party)'] }}",
+              "type": "string"
+            },
+            {
+              "id": "set-client-name",
+              "name": "clientName",
+              "value": "={{ $json['Client Full Name'] }}",
+              "type": "string"
+            },
+            {
+              "id": "set-client-email",
+              "name": "clientEmail",
+              "value": "={{ $json['Client Email'] }}",
+              "type": "string"
+            },
+            {
+              "id": "set-client-whatsapp",
+              "name": "clientWhatsapp",
+              "value": "={{ $json['Client WhatsApp (Optional)'] || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "set-company-name",
+              "name": "companyName",
+              "value": "={{ $json['Company Name (Disclosing Party)'] }}",
+              "type": "string"
+            },
+            {
+              "id": "set-project-desc",
+              "name": "projectDescription",
+              "value": "={{ $json['Project Description'] }}",
+              "type": "string"
+            },
+            {
+              "id": "set-eff-date",
+              "name": "effectiveDate",
+              "value": "={{ $json['Effective Date'] }}",
+              "type": "string"
+            },
+            {
+              "id": "set-conf-period",
+              "name": "confidentialityPeriod",
+              "value": "={{ $json['Confidentiality Period'] }}",
+              "type": "string"
+            },
+            {
+              "id": "set-gov-law",
+              "name": "governingLaw",
+              "value": "={{ $json['Governing Law / Jurisdiction'] }}",
+              "type": "string"
+            },
+            {
+              "id": "set-template-vars",
+              "name": "templateVariablesJson",
+              "value": "={{ JSON.stringify({ client_name: $json['Client Full Name'], company_name: $json['Company Name (Disclosing Party)'], effective_date: $json['Effective Date'], project_description: $json['Project Description'], confidentiality_period: $json['Confidentiality Period'], governing_law: $json['Governing Law / Jurisdiction'] }) }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "set-variables",
+      "name": "Map Form to Template Variables",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $vars.nda_template_url || 'https://YOUR_HOSTED_URL/NDA_Template_AllSign.docx' }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "download-template",
+      "name": "Download NDA Template (DOCX)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [740, 300]
+    },
+    {
+      "parameters": {
+        "documentName": "={{ $('Map Form to Template Variables').item.json.documentName }}",
+        "fileSource": "binary",
+        "binaryProperty": "data",
+        "signers": {
+          "signerValues": [
+            {
+              "name": "={{ $('Map Form to Template Variables').item.json.clientName }}",
+              "email": "={{ $('Map Form to Template Variables').item.json.clientEmail }}",
+              "whatsapp": "={{ $('Map Form to Template Variables').item.json.clientWhatsapp }}"
+            }
+          ]
+        },
+        "signatureValidations": {
+          "verifyAutografa": true
+        },
+        "configuration": {
+          "sendInvitations": true,
+          "templateVariables": "={{ $('Map Form to Template Variables').item.json.templateVariablesJson }}"
+        }
+      },
+      "id": "allsign-create",
+      "name": "AllSign: Create & Send NDA",
+      "type": "n8n-nodes-allsign.allsign",
+      "typeVersion": 1,
+      "position": [1000, 300],
+      "credentials": {
+        "allSignApi": {
+          "id": "",
+          "name": "AllSign API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "NDA Request Form": {
+      "main": [
+        [
+          {
+            "node": "Map Form to Template Variables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Form to Template Variables": {
+      "main": [
+        [
+          {
+            "node": "Download NDA Template (DOCX)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download NDA Template (DOCX)": {
+      "main": [
+        [
+          {
+            "node": "AllSign: Create & Send NDA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "NDA"
+    },
+    {
+      "name": "E-Signature"
+    },
+    {
+      "name": "AllSign"
+    },
+    {
+      "name": "Document Automation"
+    },
+    {
+      "name": "Form"
+    }
+  ],
+  "triggerCount": 1,
+  "meta": {
+    "templateId": "allsign-nda-form-automation",
+    "templateCredsSetupCompleted": false,
+    "instanceId": ""
+  }
+}
