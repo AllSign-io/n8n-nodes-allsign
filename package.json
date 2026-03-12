@@ -36,6 +36,7 @@
 		"url": "https://github.com/allsign/n8n-nodes-allsign.git"
 	},
 	"scripts": {
+		"start": "./dev.sh",
 		"build": "n8n-node build",
 		"build:watch": "tsc --watch",
 		"dev": "n8n-node dev",

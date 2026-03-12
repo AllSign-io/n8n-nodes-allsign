@@ -99,7 +99,7 @@ export class Allsign implements INodeType {
 				type: 'string',
 				default: '',
 				placeholder: 'https://example.com/document.pdf',
-				description: 'Public URL of the PDF file to upload',
+				description: 'URL of the PDF file. Supports direct links, Google Drive, and Dropbox — auto-converted to download URLs. For Google Drive, the file must be shared as "Anyone with the link". For private files, use Binary Input with the Google Drive node.',
 				displayOptions: {
 					show: {
 						fileSource: ['url'],
@@ -121,7 +121,7 @@ export class Allsign implements INodeType {
 				default: {},
 				required: true,
 				placeholder: 'Add Signer',
-				description: 'People who need to sign the document. Each signer needs at least an email or a WhatsApp number. When both are provided, the signer verifies their identity via OTP on both channels during signing.',
+				description: 'People who need to sign the document. Each signer receives their invitation via their chosen delivery method — email or WhatsApp.',
 				options: [
 					{
 						name: 'signerValues',
@@ -136,22 +136,52 @@ export class Allsign implements INodeType {
 								description: 'Full name of the signer',
 							},
 							{
+								displayName: 'Delivery Method',
+								name: 'deliveryMethod',
+								type: 'options',
+								default: 'email',
+								description: 'How the signing invitation will be delivered to this signer',
+								options: [
+									{
+										name: 'Email',
+										value: 'email',
+										description: 'Send the signing invitation via email',
+									},
+									{
+										name: 'WhatsApp',
+										value: 'whatsapp',
+										description: 'Send the signing invitation via WhatsApp',
+									},
+								],
+							},
+							{
 								displayName: 'Email',
 								name: 'email',
 								type: 'string',
 								placeholder: 'name@email.com',
 								default: '',
-								description: 'Email address of the signer. Optional if WhatsApp is provided. When both are given, the signer verifies via OTP on both channels.',
+								required: true,
+								description: 'Email address of the signer',
+								displayOptions: {
+									show: {
+										deliveryMethod: ['email'],
+									},
+								},
 							},
-                                                        {
-                                                                displayName: 'WhatsApp',
-                                                                name: 'whatsapp',
-                                                                type: 'string',
-                                                                default: '',
-                                                                placeholder: '+525512345678',
-                                                                description:
-                                                                        'WhatsApp number with country code (e.g. +525512345678). Optional if email is provided. When both are given, dual-channel OTP verification is enabled.',
-                                                        },
+							{
+								displayName: 'WhatsApp',
+								name: 'whatsapp',
+								type: 'string',
+								default: '',
+								placeholder: '+525512345678',
+								required: true,
+								description: 'WhatsApp number with country code (e.g. +525512345678)',
+								displayOptions: {
+									show: {
+										deliveryMethod: ['whatsapp'],
+									},
+								},
+							},
 						],
 					},
 				],
@@ -478,6 +508,7 @@ export class Allsign implements INodeType {
 
 				const signersData = this.getNodeParameter('signers.signerValues', i, []) as Array<{
 					name: string;
+					deliveryMethod: string;
 					email?: string;
 					whatsapp?: string;
 				}>;
@@ -554,7 +585,17 @@ export class Allsign implements INodeType {
 				let fileName: string;
 
 				if (fileSource === 'url') {
-					const fileUrl = this.getNodeParameter('fileUrl', i) as string;
+					let fileUrl = this.getNodeParameter('fileUrl', i) as string;
+
+					// Auto-convert cloud storage sharing links to direct download URLs
+					const gdriveMatch = fileUrl.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+					if (gdriveMatch) {
+						fileUrl = `https://drive.google.com/uc?export=download&id=${gdriveMatch[1]}`;
+					}
+					if (fileUrl.includes('dropbox.com') && fileUrl.includes('dl=0')) {
+						fileUrl = fileUrl.replace('dl=0', 'dl=1');
+					}
+
 					const fileBuffer = (await this.helpers.httpRequest({
 						method: 'GET',
 						url: fileUrl,
@@ -563,14 +604,17 @@ export class Allsign implements INodeType {
 					})) as Buffer;
 					fileBase64 = Buffer.from(fileBuffer).toString('base64');
 					const urlParts = fileUrl.split('/');
-					fileName = urlParts[urlParts.length - 1] || 'document.pdf';
+					fileName = decodeURIComponent(urlParts[urlParts.length - 1] || 'document.pdf');
 				} else {
 					const binaryProperty = this.getNodeParameter('binaryProperty', i) as string;
 					const binaryData = this.helpers.assertBinaryData(i, binaryProperty);
 					const buffer = await this.helpers.getBinaryDataBuffer(i, binaryProperty);
-					fileBase64 = buffer.toString('base64');
+					fileBase64 = Buffer.from(buffer).toString('base64');
 					fileName = binaryData.fileName || 'document.pdf';
 				}
+
+				// Sanitize fileName: strip accents (é→e, ñ→n) and remove non-ASCII chars
+				fileName = fileName.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
 				// Build signatureValidation — corrected field mappings
 				const signatureValidation: Record<string, boolean> = {
@@ -588,26 +632,34 @@ export class Allsign implements INodeType {
 					signatureValidation.ai_verification = verifySynthId || verifyIdScan;
 				}
 
-				// Build participants (email is optional — at least email or WhatsApp required)
+				// Build participants — each signer uses exactly one delivery method
 				const participants = signersData.map((signer) => {
 					const participant: Record<string, string> = {
 						name: signer.name,
 					};
 
-					if (signer.email && signer.email.trim() !== '') {
-						participant.email = signer.email.trim();
-					}
+					const method = signer.deliveryMethod || 'email';
 
-					if (signer.whatsapp && signer.whatsapp.trim() !== '') {
-						participant.whatsapp = signer.whatsapp.trim();
-					}
-
-					if (!participant.email && !participant.whatsapp) {
-						throw new NodeOperationError(
-							this.getNode(),
-							`Signer "${signer.name}" must have at least an email address or a WhatsApp phone number`,
-							{ itemIndex: i },
-						);
+					if (method === 'email') {
+						const email = (signer.email || '').trim();
+						if (!email) {
+							throw new NodeOperationError(
+								this.getNode(),
+								`Signer "${signer.name}" has Email as delivery method but no email address was provided`,
+								{ itemIndex: i },
+							);
+						}
+						participant.email = email;
+					} else {
+						const whatsapp = (signer.whatsapp || '').trim();
+						if (!whatsapp) {
+							throw new NodeOperationError(
+								this.getNode(),
+								`Signer "${signer.name}" has WhatsApp as delivery method but no WhatsApp number was provided`,
+								{ itemIndex: i },
+							);
+						}
+						participant.whatsapp = whatsapp;
 					}
 
 					return participant;
@@ -799,10 +851,10 @@ export class Allsign implements INodeType {
 								height: 60,
 								width: 200,
 							};
-							if (signer.email && signer.email.trim()) {
-								fieldBody.signerEmail = signer.email.trim();
-							} else if (signer.whatsapp && signer.whatsapp.trim()) {
-								fieldBody.signerPhone = signer.whatsapp.trim();
+							if ((signer.deliveryMethod || 'email') === 'email') {
+								fieldBody.signerEmail = (signer.email || '').trim();
+							} else {
+								fieldBody.signerPhone = (signer.whatsapp || '').trim();
 							}
 							try {
 								await this.helpers.httpRequest({
@@ -820,17 +872,8 @@ export class Allsign implements INodeType {
 
 					// ── Step 4: Send invitations via invite-bulk ─────────────
 					if (sendInvitations) {
-						// invite-bulk enforces single-channel per participant:
-						// email OR whatsapp, not both. Email takes priority.
-						const inviteParticipants = participants.map((p: Record<string, string>) => {
-							const invP: Record<string, string> = { name: p.name };
-							if (p.email) {
-								invP.email = p.email;
-							} else if (p.whatsapp) {
-								invP.whatsapp = p.whatsapp;
-							}
-							return invP;
-						});
+						// Each participant already has exactly one channel (email or whatsapp)
+						// so we can pass them directly to invite-bulk.
 
 						try {
 							const inviteResponse = (await this.helpers.httpRequest({
@@ -838,7 +881,7 @@ export class Allsign implements INodeType {
 								headers: authHeaders,
 								url: `${baseUrl}/v2/documents/${docId}/invite-bulk`,
 								body: {
-									participants: inviteParticipants,
+									participants,
 									config: {
 										invitedByEmail: inviterEmail,
 									},
@@ -860,6 +903,43 @@ export class Allsign implements INodeType {
 					}
 				}
 
+				// Build composite request body for output transparency
+
+				// Only include enabled validations
+				const enabledValidations: Record<string, boolean> = {};
+				for (const [key, val] of Object.entries(signatureValidation)) {
+					if (val === true) enabledValidations[key] = true;
+				}
+
+				const base64Preview = fileBase64.substring(0, 80) + '...';
+				const requestBody: Record<string, unknown> = {
+					document: {
+						name: body.document ? (body.document as Record<string, unknown>).name : fileName,
+						base64Content: base64Preview,
+					},
+					participants,
+				};
+
+				if (Object.keys(enabledValidations).length > 0) {
+					requestBody.signatureValidation = enabledValidations;
+				}
+				if (templateVariables) {
+					requestBody.placeholders = templateVariables;
+				}
+				if (folderId.trim()) {
+					requestBody.folderId = folderId.trim();
+				} else if (folderName.trim()) {
+					requestBody.folderName = folderName.trim();
+				}
+				if (Object.keys(permObj).length > 0) {
+					requestBody.permissions = permObj;
+				}
+				if (fields.length > 0) {
+					requestBody.fields = fields;
+				}
+
+				createResponse.requestBody = requestBody;
+				createResponse.documentBase64 = fileBase64;
 				returnData.push({ json: createResponse });
 			} catch (error) {
 				// Re-throw NodeOperationErrors directly (from our inner catch blocks)

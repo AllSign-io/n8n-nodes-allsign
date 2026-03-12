@@ -149,13 +149,17 @@ describe('AllSign Node', () => {
 			expect(notifOptions).toContain('sendInvitations');
 		});
 
-		it('should have email as optional (not required) for signers', () => {
+		it('should have deliveryMethod dropdown in signers', () => {
 			const signers = node.description.properties.find(
 				(p) => p.name === 'signers',
 			);
 			const signerFields = (signers as NodeProp).options![0].values!;
-			const emailField = signerFields.find((f: NodeProp) => f.name === 'email');
-			expect(emailField.required).toBeUndefined();
+			const methodField = signerFields.find((f: NodeProp) => f.name === 'deliveryMethod');
+			expect(methodField).toBeDefined();
+			expect(methodField.type).toBe('options');
+			const optionValues = methodField.options.map((o: NodeProp) => o.value);
+			expect(optionValues).toContain('email');
+			expect(optionValues).toContain('whatsapp');
 		});
 
 		it('should have sendInvitations, expiresAt, and templateVariables in Configuration', () => {
@@ -198,7 +202,7 @@ describe('AllSign Node', () => {
 				documentName: 'Test Contract',
 				fileSource: 'url',
 				fileUrl: 'https://example.com/contract.pdf',
-				'signers.signerValues': [{ name: 'John', email: 'john@test.com' }],
+				'signers.signerValues': [{ name: 'John', deliveryMethod: 'email', email: 'john@test.com' }],
 				configuration: { sendInvitations: true },
 				signatureValidations: { verifyAutografa: true },
 			});
@@ -270,7 +274,7 @@ describe('AllSign Node', () => {
 				documentName: 'Simple Doc',
 				fileSource: 'url',
 				fileUrl: 'https://example.com/simple.pdf',
-				'signers.signerValues': [{ name: 'Jane', email: 'jane@test.com' }],
+				'signers.signerValues': [{ name: 'Jane', deliveryMethod: 'email', email: 'jane@test.com' }],
 				configuration: { sendInvitations: true },
 				signatureValidations: {},
 			});
@@ -323,7 +327,7 @@ describe('AllSign Node', () => {
 				documentName: 'Binary Upload',
 				fileSource: 'binary',
 				binaryProperty: 'data',
-				'signers.signerValues': [{ name: 'Bob', email: 'bob@test.com' }],
+				'signers.signerValues': [{ name: 'Bob', deliveryMethod: 'email', email: 'bob@test.com' }],
 				configuration: { sendInvitations: true },
 				signatureValidations: {},
 			});
@@ -398,7 +402,7 @@ describe('AllSign Node', () => {
 				fileUrl: 'https://example.com/doc.pdf',
 				'signers.signerValues': [{
 					name: 'Carlos',
-					email: '',
+					deliveryMethod: 'whatsapp',
 					whatsapp: '+525512345678',
 				}],
 				configuration: { sendInvitations: true },
@@ -418,23 +422,23 @@ describe('AllSign Node', () => {
 			expect(addSignerCall.body.signerEmail).toBeUndefined();
 		});
 
-		it('should include both email and whatsapp when both provided', async () => {
+		it('should only include the selected delivery method channel', async () => {
 			const pdfBuffer = Buffer.from('pdf');
 			mockHttpRequest.mockResolvedValueOnce(pdfBuffer); // download
-			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-both' }); // create
+			mockHttpRequest.mockResolvedValueOnce({ id: 'doc-email-only' }); // create
 			mockHttpRequest.mockResolvedValueOnce({ authenticatedUser: 'owner@allsign.io' }); // security
 			mockHttpRequest.mockResolvedValueOnce({ success: true }); // add-signer
 			mockHttpRequest.mockResolvedValueOnce({ success: true }); // add-field
 			mockHttpRequest.mockResolvedValueOnce({ invited: 1 }); // invite-bulk
 
 			const fn = getMockExecuteFunctions({
-				documentName: 'Both Channels Doc',
+				documentName: 'Single Channel Doc',
 				fileSource: 'url',
 				fileUrl: 'https://example.com/doc.pdf',
 				'signers.signerValues': [{
 					name: 'Maria',
+					deliveryMethod: 'email',
 					email: 'maria@test.com',
-					whatsapp: '+525598765432',
 				}],
 				configuration: { sendInvitations: true },
 				signatureValidations: {},
@@ -446,13 +450,13 @@ describe('AllSign Node', () => {
 			const createBody = mockHttpRequest.mock.calls[1][0].body;
 			expect(createBody.participants).toBeUndefined();
 
-			// add-signer should have BOTH email and phone
+			// add-signer should have ONLY email (no phone)
 			const addSignerCall = mockHttpRequest.mock.calls[3][0];
 			expect(addSignerCall.body.signerEmail).toBe('maria@test.com');
-			expect(addSignerCall.body.signerPhone).toBe('+525598765432');
+			expect(addSignerCall.body.signerPhone).toBeUndefined();
 		});
 
-		it('should throw when signer has neither email nor phone', async () => {
+		it('should throw when email delivery method has no email', async () => {
 			const pdfBuffer = Buffer.from('pdf');
 			mockHttpRequest.mockResolvedValueOnce(pdfBuffer);
 
@@ -461,8 +465,30 @@ describe('AllSign Node', () => {
 				fileSource: 'url',
 				fileUrl: 'https://example.com/doc.pdf',
 				'signers.signerValues': [{
-					name: 'NoContact',
+					name: 'NoEmail',
+					deliveryMethod: 'email',
 					email: '',
+				}],
+				configuration: { sendInvitations: true },
+				signatureValidations: {},
+			});
+
+			await expect(node.execute.call(fn)).rejects.toThrow(
+				'Signer "NoEmail" has Email as delivery method but no email address was provided',
+			);
+		});
+
+		it('should throw when WhatsApp delivery method has no number', async () => {
+			const pdfBuffer = Buffer.from('pdf');
+			mockHttpRequest.mockResolvedValueOnce(pdfBuffer);
+
+			const fn = getMockExecuteFunctions({
+				documentName: 'Invalid Signer',
+				fileSource: 'url',
+				fileUrl: 'https://example.com/doc.pdf',
+				'signers.signerValues': [{
+					name: 'NoPhone',
+					deliveryMethod: 'whatsapp',
 					whatsapp: '',
 				}],
 				configuration: { sendInvitations: true },
@@ -470,7 +496,7 @@ describe('AllSign Node', () => {
 			});
 
 			await expect(node.execute.call(fn)).rejects.toThrow(
-				'Signer "NoContact" must have at least an email address or a WhatsApp phone number',
+				'Signer "NoPhone" has WhatsApp as delivery method but no WhatsApp number was provided',
 			);
 		});
 
@@ -489,7 +515,7 @@ describe('AllSign Node', () => {
 				fileUrl: 'https://example.com/doc.pdf',
 				'signers.signerValues': [{
 					name: 'Luis',
-					email: '',
+					deliveryMethod: 'whatsapp',
 					whatsapp: '+12125551234',
 				}],
 				configuration: { sendInvitations: true },
@@ -527,7 +553,7 @@ describe('AllSign Node', () => {
 				documentName: 'Mapping Doc',
 				fileSource: 'url',
 				fileUrl: 'https://example.com/doc.pdf',
-				'signers.signerValues': [{ name: 'Test', email: 'test@test.com' }],
+				'signers.signerValues': [{ name: 'Test', deliveryMethod: 'email', email: 'test@test.com' }],
 				configuration: { sendInvitations: true },
 				signatureValidations: {
 					verifyVideo: true,
@@ -551,7 +577,7 @@ describe('AllSign Node', () => {
 				documentName: 'Verified Doc',
 				fileSource: 'url',
 				fileUrl: 'https://example.com/doc.pdf',
-				'signers.signerValues': [{ name: 'Test', email: 'test@test.com' }],
+				'signers.signerValues': [{ name: 'Test', deliveryMethod: 'email', email: 'test@test.com' }],
 				configuration: { sendInvitations: true },
 				signatureValidations: {
 					verifyAutografa: true,
@@ -586,7 +612,7 @@ describe('AllSign Node', () => {
 				documentName: 'Identity Doc',
 				fileSource: 'url',
 				fileUrl: 'https://example.com/doc.pdf',
-				'signers.signerValues': [{ name: 'Test', email: 'test@test.com' }],
+				'signers.signerValues': [{ name: 'Test', deliveryMethod: 'email', email: 'test@test.com' }],
 				configuration: { sendInvitations: true },
 				signatureValidations: {
 					verifyIdentity: true,
@@ -612,7 +638,7 @@ describe('AllSign Node', () => {
 				documentName: 'No Identity Doc',
 				fileSource: 'url',
 				fileUrl: 'https://example.com/doc.pdf',
-				'signers.signerValues': [{ name: 'Test', email: 'test@test.com' }],
+				'signers.signerValues': [{ name: 'Test', deliveryMethod: 'email', email: 'test@test.com' }],
 				configuration: { sendInvitations: true },
 				signatureValidations: {},
 			});
@@ -785,9 +811,9 @@ describe('AllSign Node', () => {
 				fileSource: 'url',
 				fileUrl: 'https://example.com/doc.pdf',
 				'signers.signerValues': [
-					{ name: 'Alice', email: 'alice@test.com' },
-					{ name: 'Bob', email: 'bob@test.com' },
-					{ name: 'Charlie', email: 'charlie@test.com' },
+					{ name: 'Alice', deliveryMethod: 'email', email: 'alice@test.com' },
+					{ name: 'Bob', deliveryMethod: 'email', email: 'bob@test.com' },
+					{ name: 'Charlie', deliveryMethod: 'email', email: 'charlie@test.com' },
 				],
 				configuration: { sendInvitations: true },
 				signatureValidations: {},
@@ -824,7 +850,7 @@ describe('AllSign Node', () => {
 				documentName: 'Auth Test',
 				fileSource: 'url',
 				fileUrl: 'https://example.com/doc.pdf',
-				'signers.signerValues': [{ name: 'Test', email: 'test@test.com' }],
+				'signers.signerValues': [{ name: 'Test', deliveryMethod: 'email', email: 'test@test.com' }],
 				configuration: { sendInvitations: true },
 				signatureValidations: {},
 			});
@@ -849,7 +875,7 @@ describe('AllSign Node', () => {
 				documentName: 'Slash Test',
 				fileSource: 'url',
 				fileUrl: 'https://example.com/doc.pdf',
-				'signers.signerValues': [{ name: 'Test', email: 'test@test.com' }],
+				'signers.signerValues': [{ name: 'Test', deliveryMethod: 'email', email: 'test@test.com' }],
 				configuration: { sendInvitations: true },
 				signatureValidations: {},
 			});
@@ -871,7 +897,7 @@ describe('AllSign Node', () => {
 				documentName: 'Dev Doc',
 				fileSource: 'url',
 				fileUrl: 'https://example.com/doc.pdf',
-				'signers.signerValues': [{ name: 'Test', email: 'test@test.com' }],
+				'signers.signerValues': [{ name: 'Test', deliveryMethod: 'email', email: 'test@test.com' }],
 				configuration: { sendInvitations: true },
 				signatureValidations: {},
 			});
@@ -900,7 +926,7 @@ describe('AllSign Node', () => {
 				documentName: 'Error Doc',
 				fileSource: 'url',
 				fileUrl: 'https://example.com/doc.pdf',
-				'signers.signerValues': [{ name: 'Test', email: 'test@test.com' }],
+				'signers.signerValues': [{ name: 'Test', deliveryMethod: 'email', email: 'test@test.com' }],
 				configuration: { sendInvitations: true },
 				signatureValidations: {},
 			});
@@ -915,7 +941,7 @@ describe('AllSign Node', () => {
 				documentName: 'Bad URL Doc',
 				fileSource: 'url',
 				fileUrl: 'https://example.com/nonexistent.pdf',
-				'signers.signerValues': [{ name: 'Test', email: 'test@test.com' }],
+				'signers.signerValues': [{ name: 'Test', deliveryMethod: 'email', email: 'test@test.com' }],
 				configuration: { sendInvitations: true },
 				signatureValidations: {},
 			});
