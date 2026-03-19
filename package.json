@@ -35,6 +35,9 @@
 		"type": "git",
 		"url": "https://github.com/allsign/n8n-nodes-allsign.git"
 	},
+	"bugs": {
+		"url": "https://github.com/allsign/n8n-nodes-allsign/issues"
+	},
 	"scripts": {
 		"start": "./dev.sh",
 		"build": "n8n-node build",
@@ -47,7 +50,8 @@
 		"prepublishOnly": "n8n-node prerelease"
 	},
 	"files": [
-		"dist"
+		"dist/credentials",
+		"dist/nodes"
 	],
 	"n8n": {
 		"n8nNodesApiVersion": 1,

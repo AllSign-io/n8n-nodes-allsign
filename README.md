@@ -65,17 +65,6 @@ Place signature fields precisely on the document:
 | **Expires At**          | Set an expiration deadline — document auto-expires after this date |
 | **Placeholders (DOCX)** | Replace `{{ variables }}` in DOCX templates with dynamic values    |
 
-### 🔔 Trigger Node / Nodo Trigger
-
-Listen for real-time events via webhooks with HMAC signature validation:
-
-| Event                | Description                      |
-| -------------------- | -------------------------------- |
-| `document.signed`    | A signer has signed the document |
-| `document.completed` | All signers have signed          |
-| `document.sent`      | Document was sent for signing    |
-| `document.voided`    | Document was voided/cancelled    |
-
 ---
 
 ## 🚀 Getting Started / Cómo empezar
@@ -100,9 +89,9 @@ npm install n8n-nodes-allsign
 ### 2. Configure Credentials
 
 1. In n8n, go to **Credentials → Create Credential → AllSign API**
-2. Enter your **API Key** (get one from [dashboard.allsign.io](https://dashboard.allsign.io))
-3. Set the **Base URL** (default: `https://api.allsign.io`)
-4. Click **Save** — the connection test will validate your key
+2. Enter your **API Key** (get one from [dashboard.allsign.io/developers/api-keys](https://dashboard.allsign.io/developers/api-keys))
+3. (Optional) Set the **Base URL** if using a custom environment (default: `https://api.allsign.io`)
+4. Click **Save** — the connection test will validate your key automatically
 
 ### 3. Use the Node
 
@@ -132,7 +121,7 @@ npm install
 | `npm run dev`         | Start n8n with hot reload    |
 | `npm run build`       | Compile TypeScript → `dist/` |
 | `npm run build:watch` | Compile in watch mode        |
-| `npm test`            | Run unit tests (38 tests)    |
+| `npm test`            | Run unit tests (39 tests)    |
 | `npm run lint`        | Check code style             |
 
 ### ☁️ Cloudflare Tunnel (Remote Access / Acceso Remoto)
@@ -156,14 +145,14 @@ n8n-nodes-allsign/
 ├── credentials/
 │   └── AllSignApi.credentials.ts        # API Key + Base URL credential
 ├── nodes/
-│   ├── Allsign/
-│   │   ├── Allsign.node.ts              # Main node (Create & Send)
-│   │   ├── Allsign.node.json            # Codex metadata & SEO
-│   │   ├── Allsign.node.test.ts         # Unit tests (38 tests)
-│   │   └── allsign.svg                  # Node icon
-│   └── AllsignTrigger/
-│       ├── AllsignTrigger.node.ts       # Trigger node (webhooks + HMAC)
-│       └── allsign.svg                  # Trigger icon
+│   └── Allsign/
+│       ├── Allsign.node.ts              # Main node (Create & Send)
+│       ├── Allsign.node.json            # Codex metadata & SEO
+│       ├── Allsign.node.test.ts         # Unit tests (39 tests)
+│       └── allsign.svg                  # Node icon
+├── examples/
+│   ├── NDA_Automation_AllSign_Workflow.json  # Example workflow
+│   └── NDA_Template_AllSign.docx            # DOCX template
 ├── package.json
 ├── tsconfig.json
 └── jest.config.js

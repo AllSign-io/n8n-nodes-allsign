@@ -1,0 +1,24 @@
+# Development files
+mock-api/
+screenshots/
+examples/
+*.test.ts
+*.test.js
+dev.sh
+jest.config.js
+eslint.config.mjs
+.prettierrc.js
+tsconfig.json
+.vscode/
+.agents/
+
+# Build artifacts that shouldn't be published
+dist/screenshots/
+dist/tsconfig.tsbuildinfo
+dist/package.json
+
+# Internal docs
+PENDIENTES_SOFI.md
+HANDOVER.md
+README_TEMPLATE.md
+release_notes.md
