@@ -3,21 +3,73 @@
   "nodes": [
     {
       "parameters": {
+        "content": "## 📋 NDA Automation with AllSign\n\nThis workflow automates the entire NDA signing process:\n\n1. **A form** collects signer details and contract terms\n2. **Variables are mapped** to fill the DOCX template\n3. **The template is downloaded** from a public URL\n4. **AllSign creates the document** and sends signing invitations automatically\n\n> **Time saved:** What used to take 15+ minutes of manual work now runs in seconds.",
+        "height": 340,
+        "width": 380,
+        "color": 5
+      },
+      "id": "sticky-overview",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [180, -60]
+    },
+    {
+      "parameters": {
+        "content": "## 🔗 Template URL Setup\n\n**⚠️ Replace the URL** in the HTTP Request node with your hosted DOCX template.\n\nOptions to host:\n- GitHub Release asset\n- S3 / CloudFront bucket\n- Any public file server\n\nYou can also use an **n8n variable** (`$vars.nda_template_url`) to keep the URL configurable.",
+        "height": 280,
+        "width": 300,
+        "color": 6
+      },
+      "id": "sticky-template-url",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [640, -60]
+    },
+    {
+      "parameters": {
+        "content": "## 🔑 Credentials\n\n1. Go to **Credentials → Add → AllSign API**\n2. Paste your API Key from [dashboard.allsign.io/developers/api-keys](https://dashboard.allsign.io/developers/api-keys)\n3. Click **Save** — the connection test runs automatically\n\n> Free trial keys start with `allsign_test_sk_...`",
+        "height": 230,
+        "width": 300,
+        "color": 4
+      },
+      "id": "sticky-credentials",
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [960, -60]
+    },
+    {
+      "parameters": {
+        "content": "## 💡 Tips\n\n- **Template variables** like `{{ client_name }}` in the DOCX are auto-replaced with form values\n- **WhatsApp** is optional — leave blank to send by email only\n- **Signature validations** can be customized in the AllSign node (FEA, NOM-151, eIDAS, biometric, etc.)",
+        "height": 220,
+        "width": 380,
+        "color": 3
+      },
+      "id": "sticky-tips",
+      "name": "Sticky Note3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [180, 520]
+    },
+    {
+      "parameters": {
         "formTitle": "NDA Request Form",
-        "formDescription": "Fill out this form to generate and send a Non-Disclosure Agreement for electronic signature via AllSign.\n\nComplete este formulario para generar y enviar un Acuerdo de Confidencialidad (NDA) para firma electrónica con AllSign.",
+        "formDescription": "Fill out this form to generate and send a Non-Disclosure Agreement for electronic signature via AllSign.",
         "formFields": {
           "values": [
             {
               "fieldLabel": "Client Full Name",
               "fieldType": "text",
               "requiredField": true,
-              "placeholder": "e.g. María García López"
+              "placeholder": "e.g. Jane Smith"
             },
             {
               "fieldLabel": "Client Email",
               "fieldType": "email",
               "requiredField": true,
-              "placeholder": "e.g. maria@company.com"
+              "placeholder": "e.g. jane@company.com"
             },
             {
               "fieldLabel": "Client WhatsApp (Optional)",
@@ -75,7 +127,7 @@
         },
         "options": {
           "respondToWebhook": true,
-          "formSubmittedText": "✅ Your NDA has been created and sent for signature!\n\nThe signer will receive an invitation via email (and WhatsApp if provided) to review and sign the NDA electronically.\n\n--- \n✅ ¡Su NDA ha sido creado y enviado para firma!\n\nEl firmante recibirá una invitación por email (y WhatsApp si fue proporcionado) para revisar y firmar el NDA electrónicamente."
+          "formSubmittedText": "✅ Your NDA has been created and sent for signature!\n\nThe signer will receive an invitation via email (and WhatsApp if provided) to review and sign the NDA electronically."
         }
       },
       "id": "form-trigger",
@@ -162,7 +214,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $vars.nda_template_url || 'https://YOUR_HOSTED_URL/NDA_Template_AllSign.docx' }}",
+        "url": "={{ $vars.nda_template_url || 'https://raw.githubusercontent.com/AllSign-io/n8n-nodes-allsign/mvp/v1-create-send/examples/NDA_Template_AllSign.docx' }}",
         "options": {
           "response": {
             "response": {
@@ -253,21 +305,11 @@
   },
   "staticData": null,
   "tags": [
-    {
-      "name": "NDA"
-    },
-    {
-      "name": "E-Signature"
-    },
-    {
-      "name": "AllSign"
-    },
-    {
-      "name": "Document Automation"
-    },
-    {
-      "name": "Form"
-    }
+    { "name": "NDA" },
+    { "name": "E-Signature" },
+    { "name": "AllSign" },
+    { "name": "Document Automation" },
+    { "name": "Form" }
   ],
   "triggerCount": 1,
   "meta": {

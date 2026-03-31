@@ -1,7 +1,7 @@
 {
 	"name": "n8n-nodes-allsign",
 	"version": "0.1.0",
-	"description": "n8n community node for AllSign - Electronic signature, document management, biometric signing. Firma electrónica, contratos, documentos, NOM-151, FEA, eIDAS, biométrica, firmantes.",
+	"description": "n8n integration for AllSign — Electronic signature, document management, biometric signing. Supports Autógrafa, FEA, NOM-151, eIDAS, and WhatsApp delivery.",
 	"license": "MIT",
 	"homepage": "https://allsign.io",
 	"keywords": [
@@ -33,10 +33,10 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/allsign/n8n-nodes-allsign.git"
+		"url": "https://github.com/AllSign-io/n8n-nodes-allsign.git"
 	},
 	"bugs": {
-		"url": "https://github.com/allsign/n8n-nodes-allsign/issues"
+		"url": "https://github.com/AllSign-io/n8n-nodes-allsign/issues"
 	},
 	"scripts": {
 		"start": "./dev.sh",

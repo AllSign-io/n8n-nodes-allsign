@@ -1,24 +1,24 @@
 # n8n-nodes-allsign
 
 ![AllSign](https://img.shields.io/badge/AllSign-E--Signature-6C5CE7?style=for-the-badge)
-![n8n](https://img.shields.io/badge/n8n-Community%20Node-FF6D5A?style=for-the-badge)
+![n8n](https://img.shields.io/badge/n8n-Integration-FF6D5A?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
-[n8n](https://n8n.io) community node for the **[AllSign](https://allsign.io)** e-signature platform.
+[n8n](https://n8n.io) integration for the **[AllSign](https://allsign.io)** e-signature platform.
 
 Create and send documents for electronic signature directly from your n8n workflows using the AllSign API V2.
 
-> **🇲🇽 Español:** Nodo comunitario de n8n para firma electrónica con AllSign. Crea y envía documentos a firmar desde workflows de n8n.
+> **🇲🇽 Español:** Integración de n8n para firma electrónica con AllSign. Crea y envía documentos a firmar directamente desde tus workflows de n8n.
 
 ---
 
-## ✨ Features / Características
+## ✨ Features
 
 ### 📄 Document — Create & Send
 
-Upload a PDF (from URL or binary input) and send it for signing in one step, with full control over signature requirements.
+Upload a PDF or DOCX (from URL or binary input) and send it for signing in one step, with full control over signature requirements.
 
-> **🇲🇽** Sube un PDF (por URL o desde otro nodo) y envíalo a firmar en un solo paso, con control total sobre las validaciones de firma.
+> **🇲🇽** Sube un PDF o DOCX (por URL o desde otro nodo) y envíalo a firmar en un solo paso, con control total sobre los requisitos de firma.
 
 ### 📱 Signers: Email & WhatsApp
 
@@ -28,14 +28,14 @@ Signers can be reached via **email**, **WhatsApp**, or **both**. When both chann
 - ✅ WhatsApp-only signers (phone number, no email required)
 - ✅ Both channels — dual OTP verification during signing
 
-> **🇲🇽** Los firmantes pueden recibir invitaciones por email, WhatsApp o ambos. Cuando se proporcionan ambos, el firmante verifica su identidad por OTP en los dos canales como parte de la firma.
+> **🇲🇽** Los firmantes reciben invitaciones por email, WhatsApp o ambos. Cuando se proporcionan ambos canales, el firmante verifica su identidad por OTP en ambos como parte de la firma.
 
-### 🔐 10 Signature Validations / Validaciones de Firma
+### 🔐 10 Signature Validations
 
 | Validation                 | Description                                                          |
 | -------------------------- | -------------------------------------------------------------------- |
 | **Autógrafa**              | Handwritten digital signature with biometric capture (on by default) |
-| **FEA**                    | Firma Electrónica Avanzada (Mexico)                                  |
+| **FEA**                    | Advanced Electronic Signature — Firma Electrónica Avanzada (Mexico)  |
 | **eIDAS**                  | European Electronic Signature — eIDAS compliance                     |
 | **NOM-151**                | NOM-151-SCFI certified timestamping (Mexico)                         |
 | **Video Signature**        | Recorded video of the signer during the signing process              |
@@ -45,10 +45,10 @@ Signers can be reached via **email**, **WhatsApp**, or **both**. When both chann
 | **Identity Verification**  | AI-powered ID + selfie verification pipeline                         |
 | **Confirm Name**           | Signer must type their full name as confirmation                     |
 
-### 📥 File Input / Entrada de Archivo
+### 📥 File Input
 
 - **Binary Input** — Use a file from a previous node (e.g. Google Drive, HTTP Request, Dropbox)
-- **URL** — Provide a public URL to a PDF file
+- **URL** — Provide a public URL to a PDF or DOCX file (Google Drive and Dropbox links are auto-converted)
 
 ### 📐 Signature Field Placement
 
@@ -59,57 +59,47 @@ Place signature fields precisely on the document:
 
 ### ⚙️ Additional Options
 
-| Option                  | Description                                                        |
-| ----------------------- | ------------------------------------------------------------------ |
-| **Folder Name**         | Organize documents into folders automatically                      |
-| **Expires At**          | Set an expiration deadline — document auto-expires after this date |
-| **Placeholders (DOCX)** | Replace `{{ variables }}` in DOCX templates with dynamic values    |
+| Option                       | Description                                                         |
+| ---------------------------- | ------------------------------------------------------------------- |
+| **Folder**                   | Organize documents into folders (by name or ID)                     |
+| **Expires At**               | Set an expiration deadline — document auto-expires after this date  |
+| **Template Variables (DOCX)**| Replace `{{ variables }}` in DOCX templates with dynamic values     |
+| **Permissions**              | Set document owner, collaborators, and public read access           |
+| **Send Invitations**         | Auto-send or hold for manual sharing                                |
 
 ---
 
-## 🚀 Getting Started / Cómo empezar
+## 🚀 Getting Started
 
-### Prerequisites / Prerrequisitos
+### 1. Configure Credentials
 
-| Tool        | Version  | Install                              |
-| ----------- | -------- | ------------------------------------ |
-| **Node.js** | v22+     | [nvm](https://github.com/nvm-sh/nvm) |
-| **npm**     | Included | —                                    |
-
-### 1. Install in n8n
-
-```bash
-# Community nodes (from n8n UI):
-# Settings → Community Nodes → Install → n8n-nodes-allsign
-
-# Or install manually:
-npm install n8n-nodes-allsign
-```
-
-### 2. Configure Credentials
-
-1. In n8n, go to **Credentials → Create Credential → AllSign API**
-2. Enter your **API Key** (get one from [dashboard.allsign.io/developers/api-keys](https://dashboard.allsign.io/developers/api-keys))
+1. In n8n, go to **Credentials → Add Credential → AllSign API**
+2. Enter your **API Key** — get one from [dashboard.allsign.io/developers/api-keys](https://dashboard.allsign.io/developers/api-keys)
 3. (Optional) Set the **Base URL** if using a custom environment (default: `https://api.allsign.io`)
-4. Click **Save** — the connection test will validate your key automatically
+4. Click **Save** — the connection test validates your key automatically
 
-### 3. Use the Node
+> **🇲🇽** En n8n, ve a Credenciales → Agregar → AllSign API. Pega tu API Key del [Dashboard de AllSign](https://dashboard.allsign.io/developers/api-keys).
+
+### 2. Use the Node
 
 1. Add the **AllSign** node to your workflow
 2. Set the document name and file source (URL or Binary)
 3. Add signers (name + email and/or WhatsApp number)
 4. Toggle the signature validations you need
-5. Configure notifications (channel is auto-detected per signer)
-6. Execute!
+5. Execute!
+
+The signing invitation channel (email or WhatsApp) is auto-detected per signer based on the contact information provided.
 
 ---
 
-## 🛠️ Development / Desarrollo
+## 🛠️ Development
+
+For contributors and developers who want to modify or extend this node.
 
 ### Clone & Install
 
 ```bash
-git clone https://github.com/allsign/n8n-nodes-allsign.git n8n-nodes-allsign
+git clone https://github.com/AllSign-io/n8n-nodes-allsign.git
 cd n8n-nodes-allsign
 npm install
 ```
@@ -124,21 +114,7 @@ npm install
 | `npm test`            | Run unit tests (39 tests)    |
 | `npm run lint`        | Check code style             |
 
-### ☁️ Cloudflare Tunnel (Remote Access / Acceso Remoto)
-
-To expose your local n8n instance to the internet (useful for webhook testing with the AllSign backend):
-
-> **🇲🇽** Para exponer tu instancia local de n8n al internet (útil para probar webhooks con el backend de AllSign):
-
-```bash
-cloudflared tunnel run --token <YOUR_TUNNEL_TOKEN>
-```
-
-> **Note:** Requires `cloudflared` CLI installed. This creates a secure tunnel so external services can reach your `localhost:5678`.
-
----
-
-## 📂 Project Structure
+### Project Structure
 
 ```
 n8n-nodes-allsign/
@@ -152,7 +128,9 @@ n8n-nodes-allsign/
 │       └── allsign.svg                  # Node icon
 ├── examples/
 │   ├── NDA_Automation_AllSign_Workflow.json  # Example workflow
-│   └── NDA_Template_AllSign.docx            # DOCX template
+│   └── NDA_Template_AllSign.docx            # DOCX template with variables
+├── docs/
+│   └── template-portal-description.md   # n8n template portal description
 ├── package.json
 ├── tsconfig.json
 └── jest.config.js
@@ -164,21 +142,20 @@ n8n-nodes-allsign/
 
 | Problem                      | Solution                                   |
 | ---------------------------- | ------------------------------------------ |
-| Node doesn't appear in n8n   | Run `npm install` then `npm run dev`       |
-| TypeScript errors            | Ensure Node.js v22+, run `npm install`     |
 | Connection test fails        | Verify API Key and Base URL in credentials |
 | "Service refused connection" | Check the Base URL matches your backend    |
+| TypeScript errors (dev)      | Ensure Node.js v22+, run `npm install`     |
 
 ---
 
-## 📚 Resources / Recursos
+## 📚 Resources
 
 - [AllSign Platform](https://allsign.io)
-- [AllSign API Docs](https://docs.allsign.io)
+- [AllSign API Documentation](https://developers.allsign.io)
 - [AllSign API Playground](https://developers.allsign.io/api-playground/create-document)
-- [n8n Node Development Guide](https://docs.n8n.io/integrations/creating-nodes/)
+- [n8n Documentation](https://docs.n8n.io/)
 - [n8n Community Forum](https://community.n8n.io/)
 
-## 📄 License / Licencia
+## 📄 License
 
 [MIT](LICENSE.md)
