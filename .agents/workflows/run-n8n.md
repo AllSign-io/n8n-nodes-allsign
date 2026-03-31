@@ -34,6 +34,11 @@ npm start
 npm test
 ```
 
+## Login Credentials (local n8n)
+
+- **Email:** `erikasofia.garciabalderas@gmail.com`
+- **Password:** `!Bz!nt$t$4`
+
 ## Notes
 
 - The node is linked via symlink from `~/.n8n/custom/node_modules/n8n-nodes-allsign` → project directory

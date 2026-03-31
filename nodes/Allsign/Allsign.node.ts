@@ -200,7 +200,7 @@ export class Allsign implements INodeType {
 				default: {},
 				placeholder: 'Add Signature Field',
 				description:
-					'Pre-posiciona campos de firma en el documento. Solo disponible para firmantes con email. Firmantes con solo WhatsApp colocan su firma manualmente al abrir el link.',
+					'Pre-position signature fields on the document. Only available for signers with email. WhatsApp-only signers place their signature manually when opening the link.',
 				options: [
 					{
 						name: 'fieldValues',
@@ -260,7 +260,7 @@ export class Allsign implements INodeType {
 						default: '',
 							required:	true,
 						placeholder: 'name@email.com',
-						description: 'Email del firmante al que pertenece este campo (debe coincidir con el email de un firmante de arriba)',
+						description: 'Email of the signer this field belongs to (must match a signer email listed above)',
 							},
 							{
 						displayName: 'X Position',

@@ -15,22 +15,18 @@ echo ""
 echo "🔧 AllSign n8n Node — Dev Mode (hot reload)"
 echo "============================================="
 
-# --- Clean ALL duplicate installs (keep only custom/ symlink) ---
+# --- Clean stale installs (only these locations) ---
 rm -f  "$HOME/.n8n/node_modules/n8n-nodes-allsign" 2>/dev/null
-rm -rf "$HOME/.n8n/nodes/node_modules/n8n-nodes-allsign" 2>/dev/null
 rm -rf "$HOME/.npm-global/lib/node_modules/n8n-nodes-allsign" 2>/dev/null
 rm -rf "$HOME/.npm-global/lib/node_modules/n8n/node_modules/n8n-nodes-allsign" 2>/dev/null
+rm -rf "$HOME/.n8n/custom/node_modules/n8n-nodes-allsign" 2>/dev/null
 
-# Clean file: dependency from custom/package.json if present
-if grep -q "n8n-nodes-allsign" "$N8N_CUSTOM/package.json" 2>/dev/null; then
-    cd "$N8N_CUSTOM" && npm uninstall n8n-nodes-allsign 2>/dev/null || true
-    cd "$PROJECT_DIR"
-fi
-
-# --- Ensure symlink ---
-mkdir -p "$N8N_CUSTOM/node_modules"
+# --- Ensure symlink in ~/.n8n/nodes/ (where n8n 2.x loads community nodes) ---
+N8N_NODES="$HOME/.n8n/nodes"
+LINK="$N8N_NODES/node_modules/n8n-nodes-allsign"
+mkdir -p "$N8N_NODES/node_modules"
 if [ ! -L "$LINK" ]; then
-    ln -s "$PROJECT_DIR" "$LINK"
+    ln -sf "$PROJECT_DIR" "$LINK"
 fi
 echo "✓ Node linked"
 
