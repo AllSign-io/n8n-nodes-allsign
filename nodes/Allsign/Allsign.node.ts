@@ -498,8 +498,6 @@ export class Allsign implements INodeType {
 			/\/+$/,
 			'',
 		);
-		const apiKey = credentials.apiKey as string;
-		const authHeaders = { Authorization: `Bearer ${apiKey}` };
 
 		for (let i = 0; i < items.length; i++) {
 			try {
@@ -742,9 +740,8 @@ export class Allsign implements INodeType {
 				// ── Step 1: Create the document (no participants) ──────────────
 				let createResponse: IDataObject;
 				try {
-					createResponse = (await this.helpers.httpRequest({
+					createResponse = (await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
 						method: 'POST',
-						headers: authHeaders,
 						url: `${baseUrl}/v2/documents/`,
 						body,
 						json: true,
@@ -771,9 +768,8 @@ export class Allsign implements INodeType {
 					let inviterEmail = ownerEmail.trim();
 					if (!inviterEmail) {
 						try {
-							const securityInfo = (await this.helpers.httpRequest({
+							const securityInfo = (await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
 								method: 'GET',
-								headers: authHeaders,
 								url: `${baseUrl}/v2/test/security`,
 								json: true,
 							})) as IDataObject;
@@ -795,9 +791,8 @@ export class Allsign implements INodeType {
 						}
 
 						try {
-							await this.helpers.httpRequest({
+							await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
 								method: 'POST',
-								headers: authHeaders,
 								url: `${baseUrl}/v2/documents/${docId}/add-signer`,
 								body: signerBody,
 								json: true,
@@ -829,9 +824,8 @@ export class Allsign implements INodeType {
 								fieldBody.includeInAllPages = true;
 							}
 							try {
-								await this.helpers.httpRequest({
+								await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
 									method: 'POST',
-									headers: authHeaders,
 									url: `${baseUrl}/v2/documents/${docId}/signature-fields`,
 									body: fieldBody,
 									json: true,
@@ -857,9 +851,8 @@ export class Allsign implements INodeType {
 								fieldBody.signerPhone = (signer.whatsapp || '').trim();
 							}
 							try {
-								await this.helpers.httpRequest({
+								await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
 									method: 'POST',
-									headers: authHeaders,
 									url: `${baseUrl}/v2/documents/${docId}/signature-fields`,
 									body: fieldBody,
 									json: true,
@@ -876,9 +869,8 @@ export class Allsign implements INodeType {
 						// so we can pass them directly to invite-bulk.
 
 						try {
-							const inviteResponse = (await this.helpers.httpRequest({
+							const inviteResponse = (await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
 								method: 'POST',
-								headers: authHeaders,
 								url: `${baseUrl}/v2/documents/${docId}/invite-bulk`,
 								body: {
 									participants,
