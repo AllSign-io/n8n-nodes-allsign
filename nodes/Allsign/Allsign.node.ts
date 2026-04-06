@@ -594,7 +594,7 @@ export class Allsign implements INodeType {
 						fileUrl = fileUrl.replace('dl=0', 'dl=1');
 					}
 
-					const fileBuffer = (await this.helpers.httpRequest({
+					const fileBuffer = (await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
 						method: 'GET',
 						url: fileUrl,
 						encoding: 'arraybuffer',
