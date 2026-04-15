@@ -1,40 +1,23 @@
 {
-  "name": "allsign",
-  "displayName": "AllSign",
-  "description": "Create, sign, and manage documents with AllSign e-signature platform. Supports Autógrafa, FEA, NOM-151, eIDAS, and biometric signatures.",
   "node": "n8n-nodes-allsign.allsign",
   "nodeVersion": "1.0",
   "codexVersion": "1.0",
   "categories": [
     "Productivity"
   ],
-  "subcategories": {
-    "Productivity": [
-      "Document Management"
-    ]
-  },
   "alias": [
-    "firma",
-    "documento",
-    "contrato",
     "signature",
     "pdf",
     "sign",
     "esignature",
     "e-signature",
     "electronic signature",
-    "biometrica",
     "biometric",
     "nom-151",
     "nom151",
     "fea",
     "eidas",
-    "autografa",
-    "firmante",
     "signer",
-    "firma electronica",
-    "firma biometrica",
-    "campo de firma",
     "signature field",
     "legal",
     "contract",

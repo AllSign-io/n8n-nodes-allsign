@@ -8,8 +8,6 @@
 
 Create and send documents for electronic signature directly from your n8n workflows using the AllSign API V2.
 
-> **🇲🇽 Español:** Integración de n8n para firma electrónica con AllSign. Crea y envía documentos a firmar directamente desde tus workflows de n8n.
-
 ---
 
 ## ✨ Features
@@ -17,8 +15,6 @@ Create and send documents for electronic signature directly from your n8n workfl
 ### 📄 Document — Create & Send
 
 Upload a PDF or DOCX (from URL or binary input) and send it for signing in one step, with full control over signature requirements.
-
-> **🇲🇽** Sube un PDF o DOCX (por URL o desde otro nodo) y envíalo a firmar en un solo paso, con control total sobre los requisitos de firma.
 
 ### 📱 Signers: Email & WhatsApp
 
@@ -28,14 +24,12 @@ Signers can be reached via **email**, **WhatsApp**, or **both**. When both chann
 - ✅ WhatsApp-only signers (phone number, no email required)
 - ✅ Both channels — dual OTP verification during signing
 
-> **🇲🇽** Los firmantes reciben invitaciones por email, WhatsApp o ambos. Cuando se proporcionan ambos canales, el firmante verifica su identidad por OTP en ambos como parte de la firma.
-
 ### 🔐 10 Signature Validations
 
 | Validation                 | Description                                                          |
 | -------------------------- | -------------------------------------------------------------------- |
 | **Autógrafa**              | Handwritten digital signature with biometric capture (on by default) |
-| **FEA**                    | Advanced Electronic Signature — Firma Electrónica Avanzada (Mexico)  |
+| **FEA**                    | Advanced Electronic Signature — Mexico standard                      |
 | **eIDAS**                  | European Electronic Signature — eIDAS compliance                     |
 | **NOM-151**                | NOM-151-SCFI certified timestamping (Mexico)                         |
 | **Video Signature**        | Recorded video of the signer during the signing process              |
@@ -77,8 +71,6 @@ Place signature fields precisely on the document:
 2. Enter your **API Key** — get one from [dashboard.allsign.io/developers/api-keys](https://dashboard.allsign.io/developers/api-keys)
 3. (Optional) Set the **Base URL** if using a custom environment (default: `https://api.allsign.io`)
 4. Click **Save** — the connection test validates your key automatically
-
-> **🇲🇽** En n8n, ve a Credenciales → Agregar → AllSign API. Pega tu API Key del [Dashboard de AllSign](https://dashboard.allsign.io/developers/api-keys).
 
 ### 2. Use the Node
 

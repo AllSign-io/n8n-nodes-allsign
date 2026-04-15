@@ -4,8 +4,9 @@ import type {
     INodeExecutionData,
     INodeType,
     INodeTypeDescription,
+    JsonObject,
 } from 'n8n-workflow';
-import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
+import { NodeConnectionTypes, NodeApiError, NodeOperationError } from 'n8n-workflow';
 
 export class Allsign implements INodeType {
 	description: INodeTypeDescription = {
@@ -16,7 +17,7 @@ export class Allsign implements INodeType {
 		version: 1,
 		subtitle: 'Create & Send Document',
 		description:
-			'Create, sign, and manage documents with AllSign e-signature platform. Firma electrónica, NOM-151, FEA, eIDAS.',
+			'Create, sign, and manage documents with AllSign e-signature platform. NOM-151, FEA, eIDAS.',
 		defaults: {
 			name: 'AllSign',
 		},
@@ -31,18 +32,14 @@ export class Allsign implements INodeType {
 		],
 		codex: {
 			alias: [
-				'Firma',
-				'Documento',
-				'Contrato',
 				'Signature',
 				'PDF',
 				'Sign',
-				'Biometrica',
+				'Biometric',
 				'NOM-151',
 				'FEA',
 				'eIDAS',
 				'Signer',
-				'Firmante',
 				'WhatsApp',
 			],
 		},
@@ -218,7 +215,7 @@ export class Allsign implements INodeType {
 						name: 'anchorString',
 						type: 'string',
 						default: '',
-						placeholder: 'e.g. Firma del Cliente',
+						placeholder: 'e.g. Client Signature',
 						description: 'Text to search for in the PDF	—	the signature field will be placed where this text appears',
 							},
 							{
@@ -294,14 +291,6 @@ export class Allsign implements INodeType {
 					'Signature types and verification methods for legal validity and security',
 				options: [
 					{
-						displayName: 'Autógrafa (Handwritten Signature)',
-						name: 'verifyAutografa',
-						type: 'boolean',
-						default: true,
-						description:
-							'Whether to require a handwritten-style digital signature with biometric capture. Enabled by default.',
-					},
-					{
 						displayName: 'Biometric Selfie',
 						name: 'verifyBiometricSelfie',
 						type: 'boolean',
@@ -331,7 +320,15 @@ export class Allsign implements INodeType {
 						type: 'boolean',
 						default: false,
 						description:
-							'Whether to require FEA (Firma Electrónica Avanzada) verification',
+							'Whether to require FEA (Advanced Electronic Signature) verification — Mexico standard',
+					},
+					{
+						displayName: 'Handwritten Signature (Autografa)',
+						name: 'verifyAutografa',
+						type: 'boolean',
+						default: true,
+						description:
+							'Whether to require a handwritten-style digital signature with biometric capture. Enabled by default.',
 					},
 					{
 						displayName: 'ID Scan',
@@ -558,8 +555,12 @@ export class Allsign implements INodeType {
 					if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
 						templateVariables = parsed;
 					}
-				} catch {
-					// Invalid JSON — ignore silently
+				} catch (parseError) {
+					throw new NodeOperationError(
+						this.getNode(),
+						`Invalid JSON in Template Variables: ${(parseError as Error).message}`,
+						{ itemIndex: i },
+					);
 				}
 
 				// Permissions (from collapsible collection)
@@ -574,8 +575,12 @@ export class Allsign implements INodeType {
 					if (Array.isArray(parsed) && parsed.length > 0) {
 						collaborators = parsed;
 					}
-				} catch {
-					// Invalid JSON — ignore silently
+				} catch (parseError) {
+					throw new NodeOperationError(
+						this.getNode(),
+						`Invalid JSON in Collaborators: ${(parseError as Error).message}`,
+						{ itemIndex: i },
+					);
 				}
 
 				// Get file as base64
@@ -594,12 +599,13 @@ export class Allsign implements INodeType {
 						fileUrl = fileUrl.replace('dl=0', 'dl=1');
 					}
 
-					const fileBuffer = (await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
-						method: 'GET',
-						url: fileUrl,
-						encoding: 'arraybuffer',
-						returnFullResponse: false,
-					})) as Buffer;
+					const fileBuffer = Buffer.from(
+						await this.helpers.httpRequest({
+							method: 'GET',
+							url: fileUrl,
+							encoding: 'arraybuffer',
+						}) as Buffer,
+					);
 					fileBase64 = Buffer.from(fileBuffer).toString('base64');
 					const urlParts = fileUrl.split('/');
 					fileName = decodeURIComponent(urlParts[urlParts.length - 1] || 'document.pdf');
@@ -747,17 +753,10 @@ export class Allsign implements INodeType {
 						json: true,
 					})) as IDataObject;
 				} catch (createError) {
-					const cErr = createError as Record<string, unknown>;
-					const message = (cErr.message as string) || 'Unknown error';
-					let responseInfo = '';
-					try {
-						const resp = cErr.response as Record<string, unknown> | undefined;
-						if (resp) {
-							const respBody = resp.body || resp.data;
-							responseInfo = typeof respBody === 'string' ? respBody : JSON.stringify(respBody || '');
-						}
-					} catch { /* ignore */ }
-					throw new NodeOperationError(this.getNode(), `Document creation failed: ${message}${responseInfo ? ` — ${responseInfo}` : ''}`);
+					throw new NodeApiError(this.getNode(), createError as JsonObject, {
+						message: 'Document creation failed',
+						itemIndex: i,
+					});
 				}
 
 				const docId = createResponse.id as string;
@@ -775,7 +774,8 @@ export class Allsign implements INodeType {
 							})) as IDataObject;
 							inviterEmail = (securityInfo.authenticatedUser as string) || '';
 						} catch {
-							// Fallback: leave empty
+							// Could not resolve inviter email — continue with empty value
+							inviterEmail = '';
 						}
 					}
 
@@ -797,8 +797,15 @@ export class Allsign implements INodeType {
 								body: signerBody,
 								json: true,
 							});
-						} catch {
-							// Signer may already exist — continue
+						} catch (signerError) {
+							const signerErr = signerError as { message?: string; response?: { status?: number } };
+							// 409 = signer already exists, safe to continue
+							if (signerErr.response?.status !== 409) {
+								throw new NodeApiError(this.getNode(), signerError as JsonObject, {
+									message: `Failed to add signer "${p.name}"`,
+									itemIndex: i,
+								});
+							}
 						}
 					}
 
@@ -830,8 +837,11 @@ export class Allsign implements INodeType {
 									body: fieldBody,
 									json: true,
 								});
-							} catch {
-								// Field creation failed — continue
+							} catch (fieldError) {
+								throw new NodeApiError(this.getNode(), fieldError as JsonObject, {
+									message: `Failed to create signature field for "${fAny.participantEmail}"`,
+									itemIndex: i,
+								});
 							}
 						}
 					} else {
@@ -857,8 +867,11 @@ export class Allsign implements INodeType {
 									body: fieldBody,
 									json: true,
 								});
-							} catch {
-								// Field creation failed — continue
+							} catch (fieldError) {
+								throw new NodeApiError(this.getNode(), fieldError as JsonObject, {
+									message: `Failed to create auto-generated signature field for "${signer.name}"`,
+									itemIndex: i,
+								});
 							}
 						}
 					}
@@ -948,34 +961,9 @@ export class Allsign implements INodeType {
 					continue;
 				}
 
-				const err = error as {
-					response?: {
-						data?: { message?: string; error?: string; detail?: string | object };
-						status?: number;
-					};
-					message?: string;
-					context?: { itemIndex?: number };
-				};
-				const errorData = err.response?.data || {};
-				let apiMessage =
-					errorData.message || errorData.error || err.message || 'Unknown error';
-
-				if (errorData.detail) {
-					if (typeof errorData.detail === 'string') {
-						apiMessage = errorData.detail;
-					} else {
-						apiMessage = JSON.stringify(errorData.detail);
-					}
-				}
-
-				throw new NodeOperationError(
-					this.getNode(),
-					`AllSign API Error: ${apiMessage}`,
-					{
-						itemIndex: i,
-						description: `HTTP Status Code: ${err.response?.status || 'N/A'}`,
-					},
-				);
+				throw new NodeApiError(this.getNode(), error as JsonObject, {
+					itemIndex: i,
+				});
 			}
 		}
 
