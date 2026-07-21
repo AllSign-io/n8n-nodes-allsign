@@ -1,4 +1,5 @@
 const http = require('http');
+const crypto = require('crypto');
 
 const PORT = 3333;
 
@@ -6,7 +7,7 @@ const server = http.createServer((req, res) => {
   // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Idempotency-Key');
   res.setHeader('Content-Type', 'application/json');
 
   if (req.method === 'OPTIONS') {
@@ -22,69 +23,52 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // GET /v2/test/security — credential test
-  if (req.method === 'GET' && req.url === '/v2/test/security') {
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+
+  // GET /v3/documents — credential test (list, read-only)
+  if (req.method === 'GET' && url.pathname === '/v3/documents') {
     res.writeHead(200);
     res.end(JSON.stringify({
-      success: true,
-      message: 'API V2 security validated successfully',
-      authenticatedUser: 'erikasofia.garciabalderas@gmail.com',
-      tenantId: '623d9e59-86e0-4f7b-bca2-161e66b81624',
-      scopes: ['document:*', 'signature:*'],
-      environment: 'live'
+      object: 'list',
+      data: [],
+      hasMore: false,
+      nextCursor: null,
+      previousCursor: null,
+      limit: Number(url.searchParams.get('limit') || 20),
     }));
     return;
   }
 
-  // POST /v2/documents/ — create & send document
-  if (req.method === 'POST' && req.url === '/v2/documents/') {
+  // POST /v3/documents — create (single call: source + signers + signatureValidation inline)
+  if (req.method === 'POST' && url.pathname === '/v3/documents') {
     let body = '';
-    req.on('data', chunk => { body += chunk; });
+    req.on('data', (chunk) => { body += chunk; });
     req.on('end', () => {
       let parsed = {};
-      try { parsed = JSON.parse(body); } catch(e) {}
+      try { parsed = JSON.parse(body); } catch (e) { /* noop */ }
 
-      const docName = parsed.document?.name || 'Document.pdf';
-      const participantCount = parsed.participants?.length || 0;
-      const validation = parsed.signatureValidation || {};
-
-      // Build signature entries for each participant
-      const signatures = (parsed.participants || []).map((p, i) => ({
-        id: `sig-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${i}`}`,
-        status: 'SENT',
-        signer: {
-          id: `user-${Date.now()}-${i}`,
-          email: p.email
-        }
-      }));
+      const docId = `doc-${crypto.randomUUID ? crypto.randomUUID() : Date.now()}`;
+      const signerCount = Array.isArray(parsed.signers) ? parsed.signers.length : 0;
+      const now = new Date().toISOString();
 
       const response = {
-        id: `doc-${Date.now()}`,
-        name: docName,
-        documentType: 'EDITABLE',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        id: docId,
+        object: 'document',
+        name: parsed.name || (parsed.file && parsed.file.name) || 'Document',
+        status: signerCount > 0 ? 'awaiting_signatures' : 'draft',
+        documentType: parsed.source === 'template' ? 'template' : 'editable',
+        signerCount,
+        signedCount: 0,
         ownerId: '623d9e59-86e0-4f7b-bca2-161e66b81624',
-        activePublicUrl: false,
-        signersData: {
-          id: `state-${Date.now()}`,
-          status: participantCount > 0 ? 'RECOLECTANDO_FIRMANTES' : 'BORRADOR',
-          signatures
-        },
-        signatureValidation: {
-          autografa: validation.autografa ?? true,
-          FEA: validation.FEA ?? false,
-          nom151: validation.nom151 ?? false,
-          videofirma: validation.videofirma ?? false,
-          id_scan: validation.id_scan ?? false,
-          biometric_signature: validation.biometric_signature ?? false,
-          confirm_name_to_finish: validation.confirm_name_to_finish ?? false,
-        },
-        config: parsed.config || {},
-        creditsConsumed: 1
+        orgId: null,
+        folderId: null,
+        expiresAt: parsed.expiresAt || null,
+        expirationReminders: null,
+        createdAt: now,
+        updatedAt: now,
       };
 
-      console.log(`✅ Document created: "${docName}" with ${participantCount} signer(s)`);
+      console.log(`Document created: "${response.name}" (source=${parsed.source || 'file'}) with ${signerCount} signer(s)`);
       res.writeHead(201);
       res.end(JSON.stringify(response));
     });
@@ -97,7 +81,7 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`\n🚀 AllSign Mock API running on http://localhost:${PORT}`);
-  console.log(`   Test endpoint: GET  http://localhost:${PORT}/v2/test/security`);
-  console.log(`   Create doc:    POST http://localhost:${PORT}/v2/documents/\n`);
+  console.log(`\nAllSign Mock API (v3) running on http://localhost:${PORT}`);
+  console.log(`   Credential test: GET  http://localhost:${PORT}/v3/documents?limit=1`);
+  console.log(`   Create doc:      POST http://localhost:${PORT}/v3/documents\n`);
 });

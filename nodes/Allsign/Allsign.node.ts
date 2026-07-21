@@ -1,10 +1,11 @@
 import type {
-    IDataObject,
-    IExecuteFunctions,
-    INodeExecutionData,
-    INodeType,
-    INodeTypeDescription,
-    JsonObject,
+	IDataObject,
+	IExecuteFunctions,
+	IHttpRequestOptions,
+	INodeExecutionData,
+	INodeType,
+	INodeTypeDescription,
+	JsonObject,
 } from 'n8n-workflow';
 import { NodeConnectionTypes, NodeApiError, NodeOperationError } from 'n8n-workflow';
 
@@ -15,9 +16,9 @@ export class Allsign implements INodeType {
 		icon: 'file:allsign.svg',
 		group: ['transform'],
 		version: 1,
-		subtitle: 'Create & Send Document',
+		subtitle: 'Create Document (v3)',
 		description:
-			'Create, sign, and manage documents with AllSign e-signature platform. NOM-151, FEA, eIDAS.',
+			'Create and send documents for e-signature with the AllSign API v3 — a single call with inline signers and signature validation. NOM-151, FEA, biometric verification.',
 		defaults: {
 			name: 'AllSign',
 		},
@@ -38,7 +39,6 @@ export class Allsign implements INodeType {
 				'Biometric',
 				'NOM-151',
 				'FEA',
-				'eIDAS',
 				'Signer',
 				'WhatsApp',
 			],
@@ -59,12 +59,38 @@ export class Allsign implements INodeType {
 				description: 'Name for the new document',
 			},
 
-			// ------ File Source ------
+			// ------ Source ------
+			{
+				displayName: 'Source',
+				name: 'source',
+				type: 'options',
+				default: 'file',
+				description: 'Where the document content comes from — an inline file or an existing AllSign template',
+				options: [
+					{
+						name: 'File',
+						value: 'file',
+						description: 'Upload a PDF or DOCX (from URL or binary input)',
+					},
+					{
+						name: 'Template',
+						value: 'template',
+						description: 'Use an existing AllSign template, filling in its variables',
+					},
+				],
+			},
+
+			// ------ File Source (source = file) ------
 			{
 				displayName: 'File Source',
 				name: 'fileSource',
 				type: 'options',
 				default: 'binary',
+				displayOptions: {
+					show: {
+						source: ['file'],
+					},
+				},
 				options: [
 					{
 						name: 'Binary Input',
@@ -74,7 +100,7 @@ export class Allsign implements INodeType {
 					{
 						name: 'URL',
 						value: 'url',
-						description: 'Provide a public URL to the PDF file',
+						description: 'Provide a public URL to the file',
 					},
 				],
 			},
@@ -83,9 +109,10 @@ export class Allsign implements INodeType {
 				name: 'binaryProperty',
 				type: 'string',
 				default: 'data',
-				description: 'Name of the binary property containing the PDF file',
+				description: 'Name of the binary property containing the file',
 				displayOptions: {
 					show: {
+						source: ['file'],
 						fileSource: ['binary'],
 					},
 				},
@@ -96,14 +123,43 @@ export class Allsign implements INodeType {
 				type: 'string',
 				default: '',
 				placeholder: 'https://example.com/document.pdf',
-				description: 'URL of the PDF file. Supports direct links, Google Drive, and Dropbox — auto-converted to download URLs. For Google Drive, the file must be shared as "Anyone with the link". For private files, use Binary Input with the Google Drive node.',
+				description: 'URL of the file. Supports direct links, Google Drive, and Dropbox — auto-converted to download URLs. For Google Drive, the file must be shared as "Anyone with the link". For private files, use Binary Input with the Google Drive node.',
 				displayOptions: {
 					show: {
+						source: ['file'],
 						fileSource: ['url'],
 					},
 				},
 			},
 
+			// ------ Template (source = template) ------
+			{
+				displayName: 'Template ID',
+				name: 'templateId',
+				type: 'string',
+				default: '',
+				required: true,
+				placeholder: 'tmpl_...',
+				description: 'ID of an existing AllSign template',
+				displayOptions: {
+					show: {
+						source: ['template'],
+					},
+				},
+			},
+			{
+				displayName: 'Template Values',
+				name: 'templateValues',
+				type: 'json',
+				default: '{}',
+				placeholder: '{"nombre_completo": "Juan Pérez", "monto": "$10,000"}',
+				description: 'Key-value pairs to fill in the template variables. Keys are the template\'s natural variable names (never camelCased).',
+				displayOptions: {
+					show: {
+						source: ['template'],
+					},
+				},
+			},
 
 			// ====================================================
 			// SIGNERS
@@ -124,14 +180,6 @@ export class Allsign implements INodeType {
 						name: 'signerValues',
 						displayName: 'Signer',
 						values: [
-							{
-								displayName: 'Name',
-								name: 'name',
-								type: 'string',
-								default: '',
-								required: true,
-								description: 'Full name of the signer',
-							},
 							{
 								displayName: 'Delivery Method',
 								name: 'deliveryMethod',
@@ -166,6 +214,22 @@ export class Allsign implements INodeType {
 								},
 							},
 							{
+								displayName: 'Name',
+								name: 'name',
+								type: 'string',
+								default: '',
+								required: true,
+								description: 'Full name of the signer',
+							},
+							{
+								displayName: 'Role Name',
+								name: 'roleName',
+								type: 'string',
+								default: '',
+								placeholder: 'e.g. proveedor',
+								description: 'Semantic role for this signer (e.g. "proveedor"), used to auto-assign template variables marked with that role. Optional.',
+							},
+							{
 								displayName: 'WhatsApp',
 								name: 'whatsapp',
 								type: 'string',
@@ -180,100 +244,6 @@ export class Allsign implements INodeType {
 								},
 							},
 						],
-					},
-				],
-			},
-
-			// ====================================================
-			// SIGNATURE FIELDS
-			// ====================================================
-			{
-				displayName: 'Signature Fields',
-				name: 'signatureFields',
-				type: 'fixedCollection',
-				typeOptions: {
-					multipleValues: true,
-				},
-				default: {},
-				placeholder: 'Add Signature Field',
-				description:
-					'Pre-position signature fields on the document. Only available for signers with email. WhatsApp-only signers place their signature manually when opening the link.',
-				options: [
-					{
-						name: 'fieldValues',
-						displayName: 'Field',
-						values: [
-							{
-						displayName: 'All Pages',
-						name: 'includeInAllPages',
-						type: 'boolean',
-						default: false,
-						description: 'Whether to place this field on every page of the document',
-							},
-							{
-						displayName: 'Anchor Text',
-						name: 'anchorString',
-						type: 'string',
-						default: '',
-						placeholder: 'e.g. Client Signature',
-						description: 'Text to search for in the PDF	—	the signature field will be placed where this text appears',
-							},
-							{
-						displayName: 'Height',
-						name: 'height',
-						type: 'number',
-						default: 100,
-						description: 'Height of the signature field in points. Width is auto-calculated (2:1 ratio).',
-							},
-							{
-						displayName: 'Page Number',
-						name: 'pageNumber',
-						type: 'number',
-						default: 1,
-						description: 'Page where the signature field should be placed (starts at 1). Ignored when All Pages is enabled.',
-							},
-							{
-						displayName: 'Placement Mode',
-						name: 'placementMode',
-						type: 'options',
-						default: 'coordinates',
-						options: [
-									{
-										name: 'Anchor Text',
-										value: 'anchor',
-										description: 'Place field where a specific text is found in the PDF',
-									},
-									{
-										name: 'Coordinates (X, Y)',
-										value: 'coordinates',
-										description: 'Place field at specific X, Y coordinates on a page',
-									},
-								]
-							},
-							{
-						displayName: 'Signer Email',
-						name: 'participantEmail',
-						type: 'string',
-						default: '',
-							required:	true,
-						placeholder: 'name@email.com',
-						description: 'Email of the signer this field belongs to (must match a signer email listed above)',
-							},
-							{
-						displayName: 'X Position',
-						name: 'x',
-						type: 'number',
-						default: 100,
-						description: 'Horizontal position in points from left edge of page',
-							},
-							{
-						displayName: 'Y Position',
-						name: 'y',
-						type: 'number',
-						default: 500,
-						description: 'Vertical position in points from top edge of page',
-							},
-					],
 					},
 				],
 			},
@@ -296,23 +266,7 @@ export class Allsign implements INodeType {
 						type: 'boolean',
 						default: false,
 						description:
-							'Whether to require a biometric selfie for face comparison against the signer\'s ID',
-					},
-					{
-						displayName: 'Confirm Name',
-						name: 'verifyConfirmName',
-						type: 'boolean',
-						default: false,
-						description:
-							'Whether to require the signer to type their full name as confirmation',
-					},
-					{
-						displayName: 'eIDAS (European Electronic Signature)',
-						name: 'verifyEidas',
-						type: 'boolean',
-						default: false,
-						description:
-							'Whether to apply eIDAS compliance to the document for European legal validity',
+							'Whether to require a biometric selfie for face comparison against the signer\'s ID (anti-deepfake)',
 					},
 					{
 						displayName: 'FEA (Advanced Electronic Signature)',
@@ -328,7 +282,7 @@ export class Allsign implements INodeType {
 						type: 'boolean',
 						default: true,
 						description:
-							'Whether to require a handwritten-style digital signature with biometric capture. Enabled by default.',
+							'Whether to require a handwritten-style digital signature. Enabled by default.',
 					},
 					{
 						displayName: 'ID Scan',
@@ -339,28 +293,12 @@ export class Allsign implements INodeType {
 							'Whether to require signers to scan their government-issued ID',
 					},
 					{
-						displayName: 'Identity Verification',
-						name: 'verifyIdentity',
-						type: 'boolean',
-						default: false,
-						description:
-							'Whether to require identity verification for signers',
-					},
-					{
 						displayName: 'NOM-151 (Timestamping)',
 						name: 'verifyNom151',
 						type: 'boolean',
 						default: false,
 						description:
-							'Whether to apply NOM-151 certified timestamping to the document',
-					},
-					{
-						displayName: 'SynthID (AI Detection)',
-						name: 'verifySynthId',
-						type: 'boolean',
-						default: false,
-						description:
-							'Whether to verify the selfie was taken by a real person and not AI-generated (requires Biometric Selfie)',
+							'Whether to apply NOM-151 certified conservation timestamping to the document',
 					},
 					{
 						displayName: 'Video Signature',
@@ -382,8 +320,7 @@ export class Allsign implements INodeType {
 				type: 'collection',
 				placeholder: 'Configure',
 				default: {},
-				description:
-					'Controls the invitation flow, expiration, and template variables',
+				description: 'Controls expiration and request idempotency',
 				options: [
 					{
 						displayName: 'Expires At',
@@ -394,93 +331,13 @@ export class Allsign implements INodeType {
 							'Optional expiration deadline (ISO 8601). After this date, the document expires and can no longer be signed.',
 					},
 					{
-						displayName: 'Send Invitations',
-						name: 'sendInvitations',
-						type: 'boolean',
-						default: true,
-						description:
-							'Whether to send signing links to each signer after the document is created. The best channel (email or WhatsApp) is auto-detected per signer. When both are provided, OTP is sent on both channels for dual verification. Disable to share links manually.',
-					},
-					{
-						displayName: 'Template Variables (DOCX)',
-						name: 'templateVariables',
-						type: 'json',
-						default: '{}',
-						placeholder: '{"client_name": "Juan Pérez", "amount": "$10,000"}',
-						description:
-							'Key-value pairs to replace variables in DOCX templates (e.g. {{ client_name }} → "Juan Pérez"). Only applied for .docx files; ignored for PDFs.',
-					},
-				],
-			},
-
-			// ====================================================
-			// 🔐 PERMISSIONS (collapsible)
-			// ====================================================
-			{
-				displayName: 'Permissions (Optional)',
-				name: 'permissions',
-				type: 'collection',
-				placeholder: 'Configure Permissions',
-				default: {},
-				description:
-					'Define the document owner and collaborators with granular access control',
-				options: [
-					{
-						displayName: 'Collaborators',
-						name: 'collaborators',
-						type: 'json',
-						default: '[]',
-						placeholder: '[{"email": "cfo@company.com", "permissions": ["read", "sign"]}]',
-						description:
-							'List of collaborators with specific permissions. Each has an email and a permissions array. Valid permissions: read, update, delete, sign, admin. A collaborator cannot also be a signer.',
-					},
-					{
-						displayName: 'Owner Email',
-						name: 'ownerEmail',
+						displayName: 'Idempotency Key',
+						name: 'idempotencyKey',
 						type: 'string',
 						default: '',
-						placeholder: 'e.g. legal@company.com',
+						placeholder: 'e.g. order-4821-create',
 						description:
-							'Email of the document owner. If omitted, the owner will be the user associated with the API key.',
-					},
-					{
-						displayName: 'Public Read',
-						name: 'isPublicRead',
-						type: 'boolean',
-						default: false,
-						description:
-							'Whether the document is publicly readable without authentication',
-					},
-				],
-			},
-
-			// ====================================================
-			// 📁 FOLDER (collapsible)
-			// ====================================================
-			{
-				displayName: 'Folder (Optional)',
-				name: 'folderSettings',
-				type: 'collection',
-				placeholder: 'Configure Folder',
-				default: {},
-				description:
-					'Organize the document into a folder. Use either Folder ID or Folder Name — they are mutually exclusive.',
-				options: [
-					{
-						displayName: 'Folder ID',
-						name: 'folderId',
-						type: 'string',
-						default: '',
-						placeholder: 'e.g. 550e8400-e29b-41d4-a716-446655440000',
-						description: 'UUID of an existing folder',
-					},
-					{
-						displayName: 'Folder Name',
-						name: 'folderName',
-						type: 'string',
-						default: '',
-						placeholder: 'e.g. Contracts 2026',
-						description: 'Name of the folder. If it doesn\'t exist, it will be created automatically.',
+							'Optional key to safely retry this request without creating a duplicate document. Sent as the Idempotency-Key header.',
 					},
 				],
 			},
@@ -499,149 +356,35 @@ export class Allsign implements INodeType {
 		for (let i = 0; i < items.length; i++) {
 			try {
 				const documentName = this.getNodeParameter('documentName', i) as string;
-				const fileSource = this.getNodeParameter('fileSource', i) as string;
+				const source = this.getNodeParameter('source', i, 'file') as string;
 
 				const signersData = this.getNodeParameter('signers.signerValues', i, []) as Array<{
 					name: string;
 					deliveryMethod: string;
 					email?: string;
 					whatsapp?: string;
+					roleName?: string;
 				}>;
 
 				// Configuration (from collapsible collection)
 				const configSettings = this.getNodeParameter('configuration', i, {}) as IDataObject;
-				const sendInvitations = (configSettings.sendInvitations as boolean) ?? true;
 				const expiresAt = (configSettings.expiresAt as string) ?? '';
-				const templateVarsRaw = (configSettings.templateVariables as string) ?? '{}';
+				const idempotencyKey = (configSettings.idempotencyKey as string) ?? '';
 
-				// Signature Validations (from collapsible collection)
+				// Signature Validations (from collapsible collection) — v3's curated 6-flag subset
 				const sigValidations = this.getNodeParameter('signatureValidations', i, {}) as IDataObject;
-				const verifyAutografa = (sigValidations.verifyAutografa as boolean) ?? true;
-				const verifyFea = (sigValidations.verifyFea as boolean) ?? false;
-				const verifyEidas = (sigValidations.verifyEidas as boolean) ?? false;
-				const verifyNom151 = (sigValidations.verifyNom151 as boolean) ?? false;
-				const verifyVideo = (sigValidations.verifyVideo as boolean) ?? false;
-				const verifyConfirmName = (sigValidations.verifyConfirmName as boolean) ?? false;
-				const verifyIdentity = (sigValidations.verifyIdentity as boolean) ?? false;
-				const verifyIdScan = (sigValidations.verifyIdScan as boolean) ?? false;
-				const verifyBiometricSelfie = (sigValidations.verifyBiometricSelfie as boolean) ?? false;
-				const verifySynthId = (sigValidations.verifySynthId as boolean) ?? false;
-
-				// Signature fields
-				const fieldsData = this.getNodeParameter(
-					'signatureFields.fieldValues',
-					i,
-					[],
-				) as Array<{
-					participantEmail: string;
-					placementMode: string;
-					x?: number;
-					y?: number;
-					pageNumber?: number;
-					includeInAllPages?: boolean;
-					anchorString?: string;
-					height?: number;
-				}>;
-
-				// Folder (from collapsible collection)
-				const folderOpts = this.getNodeParameter('folderSettings', i, {}) as IDataObject;
-				const folderId = (folderOpts.folderId as string) ?? '';
-				const folderName = (folderOpts.folderName as string) ?? '';
-
-				// Parse template variables JSON
-				let templateVariables: Record<string, string> | undefined;
-				try {
-					const parsed = JSON.parse(templateVarsRaw);
-					if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
-						templateVariables = parsed;
-					}
-				} catch (parseError) {
-					throw new NodeOperationError(
-						this.getNode(),
-						`Invalid JSON in Template Variables: ${(parseError as Error).message}`,
-						{ itemIndex: i },
-					);
-				}
-
-				// Permissions (from collapsible collection)
-				const permSettings = this.getNodeParameter('permissions', i, {}) as IDataObject;
-				const ownerEmail = (permSettings.ownerEmail as string) ?? '';
-				const collaboratorsRaw = (permSettings.collaborators as string) ?? '[]';
-				const isPublicRead = (permSettings.isPublicRead as boolean) ?? false;
-
-				let collaborators: Array<{ email: string; permissions: string[] }> | undefined;
-				try {
-					const parsed = JSON.parse(collaboratorsRaw);
-					if (Array.isArray(parsed) && parsed.length > 0) {
-						collaborators = parsed;
-					}
-				} catch (parseError) {
-					throw new NodeOperationError(
-						this.getNode(),
-						`Invalid JSON in Collaborators: ${(parseError as Error).message}`,
-						{ itemIndex: i },
-					);
-				}
-
-				// Get file as base64
-				let fileBase64: string;
-				let fileName: string;
-
-				if (fileSource === 'url') {
-					let fileUrl = this.getNodeParameter('fileUrl', i) as string;
-
-					// Auto-convert cloud storage sharing links to direct download URLs
-					const gdriveMatch = fileUrl.match(/drive\.google\.com\/file\/d\/([^/]+)/);
-					if (gdriveMatch) {
-						fileUrl = `https://drive.google.com/uc?export=download&id=${gdriveMatch[1]}`;
-					}
-					if (fileUrl.includes('dropbox.com') && fileUrl.includes('dl=0')) {
-						fileUrl = fileUrl.replace('dl=0', 'dl=1');
-					}
-
-					const fileBuffer = Buffer.from(
-						await this.helpers.httpRequest({
-							method: 'GET',
-							url: fileUrl,
-							encoding: 'arraybuffer',
-						}) as Buffer,
-					);
-					fileBase64 = Buffer.from(fileBuffer).toString('base64');
-					const urlParts = fileUrl.split('/');
-					fileName = decodeURIComponent(urlParts[urlParts.length - 1] || 'document.pdf');
-				} else {
-					const binaryProperty = this.getNodeParameter('binaryProperty', i) as string;
-					const binaryData = this.helpers.assertBinaryData(i, binaryProperty);
-					const buffer = await this.helpers.getBinaryDataBuffer(i, binaryProperty);
-					fileBase64 = Buffer.from(buffer).toString('base64');
-					fileName = binaryData.fileName || 'document.pdf';
-				}
-
-				// Sanitize fileName: strip accents (é→e, ñ→n) and remove non-ASCII chars
-				fileName = fileName.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-				// Build signatureValidation — corrected field mappings
 				const signatureValidation: Record<string, boolean> = {
-					autografa: verifyAutografa,
-					FEA: verifyFea,
-					eIDAS: verifyEidas,
-					nom151: verifyNom151,
-					videofirma: verifyVideo,
-					biometric_signature: verifyBiometricSelfie,
-					confirm_name_to_finish: verifyConfirmName,
-					id_scan: verifyIdScan,
+					autografa: (sigValidations.verifyAutografa as boolean) ?? true,
+					nom151: (sigValidations.verifyNom151 as boolean) ?? false,
+					fea: (sigValidations.verifyFea as boolean) ?? false,
+					biometricSignature: (sigValidations.verifyBiometricSelfie as boolean) ?? false,
+					idScan: (sigValidations.verifyIdScan as boolean) ?? false,
+					videofirma: (sigValidations.verifyVideo as boolean) ?? false,
 				};
 
-				if (verifyIdentity) {
-					signatureValidation.ai_verification = verifySynthId || verifyIdScan;
-				}
-
-				// Build participants — each signer uses exactly one delivery method
-				const participants = signersData.map((signer) => {
-					const participant: Record<string, string> = {
-						name: signer.name,
-					};
-
+				// Build signers[] — each signer uses exactly one delivery method
+				const signers = signersData.map((signer) => {
+					const s: Record<string, string> = { name: signer.name };
 					const method = signer.deliveryMethod || 'email';
 
 					if (method === 'email') {
@@ -653,7 +396,7 @@ export class Allsign implements INodeType {
 								{ itemIndex: i },
 							);
 						}
-						participant.email = email;
+						s.email = email;
 					} else {
 						const whatsapp = (signer.whatsapp || '').trim();
 						if (!whatsapp) {
@@ -663,95 +406,122 @@ export class Allsign implements INodeType {
 								{ itemIndex: i },
 							);
 						}
-						participant.whatsapp = whatsapp;
+						s.phone = whatsapp;
 					}
 
-					return participant;
+					const roleName = (signer.roleName || '').trim();
+					if (roleName) {
+						s.roleName = roleName;
+					}
+
+					return s;
 				});
 
-				// Build signature fields
-				const fields = fieldsData.map((field) => {
-					if (field.placementMode === 'anchor') {
-						return {
-							participantEmail: field.participantEmail,
-							anchorString: field.anchorString || '',
-							height: field.height || 100,
-						};
-					}
-					const fieldObj: Record<string, unknown> = {
-						participantEmail: field.participantEmail,
-						position: {
-							x: field.x ?? 100,
-							y: field.y ?? 500,
-						},
-						height: field.height || 100,
-					};
-					if (field.includeInAllPages) {
-						fieldObj.includeInAllPages = true;
-					} else {
-						fieldObj.pageNumber = field.pageNumber || 1;
-					}
-					return fieldObj;
-				});
-
-				// Note: User-configured fields and auto-generated fields are both
-				// added AFTER document creation via /signature-fields endpoint,
-				// because the create body cannot contain fields without participants.
-
-				// Build request body — document only, NO participants in create
-				// Participants are added via /add-signer endpoint after creation
-				// to avoid the Temporal workflow 500 error in doc_setup_participants.
-				const hasParticipants = participants.length > 0;
-
-				const configObj: Record<string, unknown> = {
-					sendInvitations: false,
-					startAtStep: 1,
+				// Build the v3 create body — one call, no orchestration
+				const body: Record<string, unknown> = {
+					source,
+					name: documentName,
+					signatureValidation,
 				};
+
+				if (source === 'template') {
+					const templateId = (this.getNodeParameter('templateId', i) as string).trim();
+					if (!templateId) {
+						throw new NodeOperationError(
+							this.getNode(),
+							'Template ID is required when Source is Template',
+							{ itemIndex: i },
+						);
+					}
+					body.templateId = templateId;
+
+					const templateValuesRaw = this.getNodeParameter('templateValues', i, '{}') as string;
+					try {
+						const parsed = JSON.parse(templateValuesRaw);
+						if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+							body.templateValues = parsed;
+						}
+					} catch (parseError) {
+						throw new NodeOperationError(
+							this.getNode(),
+							`Invalid JSON in Template Values: ${(parseError as Error).message}`,
+							{ itemIndex: i },
+						);
+					}
+				} else {
+					const fileSource = this.getNodeParameter('fileSource', i) as string;
+
+					let fileBase64: string;
+					let fileName: string;
+
+					if (fileSource === 'url') {
+						let fileUrl = this.getNodeParameter('fileUrl', i) as string;
+
+						// Auto-convert cloud storage sharing links to direct download URLs
+						const gdriveMatch = fileUrl.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+						if (gdriveMatch) {
+							fileUrl = `https://drive.google.com/uc?export=download&id=${gdriveMatch[1]}`;
+						}
+						if (fileUrl.includes('dropbox.com') && fileUrl.includes('dl=0')) {
+							fileUrl = fileUrl.replace('dl=0', 'dl=1');
+						}
+
+						const fileBuffer = Buffer.from(
+							await this.helpers.httpRequest({
+								method: 'GET',
+								url: fileUrl,
+								encoding: 'arraybuffer',
+							}) as Buffer,
+						);
+						fileBase64 = Buffer.from(fileBuffer).toString('base64');
+						const urlParts = fileUrl.split('/');
+						fileName = decodeURIComponent(urlParts[urlParts.length - 1] || 'document.pdf');
+					} else {
+						const binaryProperty = this.getNodeParameter('binaryProperty', i) as string;
+						const binaryData = this.helpers.assertBinaryData(i, binaryProperty);
+						const buffer = await this.helpers.getBinaryDataBuffer(i, binaryProperty);
+						fileBase64 = Buffer.from(buffer).toString('base64');
+						fileName = binaryData.fileName || 'document.pdf';
+					}
+
+					// Sanitize fileName: strip accents (é→e, ñ→n) and remove non-ASCII chars
+					fileName = fileName.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+					const fileType = fileName.toLowerCase().endsWith('.docx') ? 'docx' : 'pdf';
+
+					body.file = {
+						content: fileBase64,
+						fileType,
+						name: fileName,
+					};
+				}
+
+				if (signers.length > 0) {
+					body.signers = signers;
+				}
 
 				if (expiresAt) {
-					configObj.expiresAt = expiresAt;
+					body.expiresAt = expiresAt;
 				}
 
-				const body: Record<string, unknown> = {
-					document: {
-						base64Content: fileBase64,
-						name: fileName.endsWith('.pdf') ? fileName : `${documentName}.pdf`,
-					},
-					signatureValidation,
-					config: configObj,
+				const requestOptions: IHttpRequestOptions = {
+					method: 'POST',
+					url: `${baseUrl}/v3/documents`,
+					body,
+					json: true,
 				};
 
-				// Fields are NEVER included in the create body — they are added
-				// via /signature-fields endpoint after signers are registered.
-
-				if (folderId.trim()) {
-					body.folderId = folderId.trim();
-				} else if (folderName.trim()) {
-					body.folderName = folderName.trim();
+				if (idempotencyKey.trim()) {
+					requestOptions.headers = { 'Idempotency-Key': idempotencyKey.trim() };
 				}
 
-				if (templateVariables) {
-					body.placeholders = templateVariables;
-				}
-
-				// Build permissions object
-				const permObj: Record<string, unknown> = {};
-				if (ownerEmail.trim()) permObj.ownerEmail = ownerEmail.trim();
-				if (collaborators) permObj.collaborators = collaborators;
-				if (isPublicRead) permObj.isPublicRead = true;
-				if (Object.keys(permObj).length > 0) {
-					body.permissions = permObj;
-				}
-
-				// ── Step 1: Create the document (no participants) ──────────────
+				// ── Single call: create the document with signers + validation inline ──
 				let createResponse: IDataObject;
 				try {
-					createResponse = (await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
-						method: 'POST',
-						url: `${baseUrl}/v2/documents/`,
-						body,
-						json: true,
-					})) as IDataObject;
+					createResponse = (await this.helpers.httpRequestWithAuthentication.call(
+						this,
+						'allSignApi',
+						requestOptions,
+					)) as IDataObject;
 				} catch (createError) {
 					throw new NodeApiError(this.getNode(), createError as JsonObject, {
 						message: 'Document creation failed',
@@ -759,195 +529,9 @@ export class Allsign implements INodeType {
 					});
 				}
 
-				const docId = createResponse.id as string;
-
-				// ── Step 2: Add signers via /add-signer endpoint ──────────────
-				if (hasParticipants) {
-					// Resolve inviter email (needed for add-signer and invite-bulk)
-					let inviterEmail = ownerEmail.trim();
-					if (!inviterEmail) {
-						try {
-							const securityInfo = (await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
-								method: 'GET',
-								url: `${baseUrl}/v2/test/security`,
-								json: true,
-							})) as IDataObject;
-							inviterEmail = (securityInfo.authenticatedUser as string) || '';
-						} catch {
-							// Could not resolve inviter email — continue with empty value
-							inviterEmail = '';
-						}
-					}
-
-					for (const p of participants) {
-						const signerBody: Record<string, string> = {
-							invitedByEmail: inviterEmail,
-						};
-						if ((p as Record<string, string>).email) {
-							signerBody.signerEmail = (p as Record<string, string>).email;
-						}
-						if ((p as Record<string, string>).whatsapp) {
-							signerBody.signerPhone = (p as Record<string, string>).whatsapp;
-						}
-
-						try {
-							await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
-								method: 'POST',
-								url: `${baseUrl}/v2/documents/${docId}/add-signer`,
-								body: signerBody,
-								json: true,
-							});
-						} catch (signerError) {
-							const signerErr = signerError as { message?: string; response?: { status?: number } };
-							// 409 = signer already exists, safe to continue
-							if (signerErr.response?.status !== 409) {
-								throw new NodeApiError(this.getNode(), signerError as JsonObject, {
-									message: `Failed to add signer "${p.name}"`,
-									itemIndex: i,
-								});
-							}
-						}
-					}
-
-					// ── Step 3: Add signature fields ─────────────────────────
-					// Add user-configured fields via /signature-fields endpoint
-					// (converting from create-body format to endpoint format)
-					if (fieldsData.length > 0) {
-						for (const f of fields) {
-							const fAny = f as Record<string, unknown>;
-							const pos = fAny.position as Record<string, number> | undefined;
-							const fieldBody: Record<string, unknown> = {
-								signerEmail: fAny.participantEmail,
-								x: pos ? pos.x : 100,
-								y: pos ? pos.y : 500,
-								pageNumber: (fAny.pageNumber as number) || 1,
-								height: (fAny.height as number) || 100,
-								width: 200,
-							};
-							if (fAny.anchorString) {
-								fieldBody.anchorString = fAny.anchorString;
-							}
-							if (fAny.includeInAllPages) {
-								fieldBody.includeInAllPages = true;
-							}
-							try {
-								await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
-									method: 'POST',
-									url: `${baseUrl}/v2/documents/${docId}/signature-fields`,
-									body: fieldBody,
-									json: true,
-								});
-							} catch (fieldError) {
-								throw new NodeApiError(this.getNode(), fieldError as JsonObject, {
-									message: `Failed to create signature field for "${fAny.participantEmail}"`,
-									itemIndex: i,
-								});
-							}
-						}
-					} else {
-						// Auto-generate a default field for EVERY signer
-						for (let idx = 0; idx < signersData.length; idx++) {
-							const signer = signersData[idx];
-							const fieldBody: Record<string, unknown> = {
-								x: 100,
-								y: 500 + (idx * 80),
-								pageNumber: 1,
-								height: 60,
-								width: 200,
-							};
-							if ((signer.deliveryMethod || 'email') === 'email') {
-								fieldBody.signerEmail = (signer.email || '').trim();
-							} else {
-								fieldBody.signerPhone = (signer.whatsapp || '').trim();
-							}
-							try {
-								await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
-									method: 'POST',
-									url: `${baseUrl}/v2/documents/${docId}/signature-fields`,
-									body: fieldBody,
-									json: true,
-								});
-							} catch (fieldError) {
-								throw new NodeApiError(this.getNode(), fieldError as JsonObject, {
-									message: `Failed to create auto-generated signature field for "${signer.name}"`,
-									itemIndex: i,
-								});
-							}
-						}
-					}
-
-					// ── Step 4: Send invitations via invite-bulk ─────────────
-					if (sendInvitations) {
-						// Each participant already has exactly one channel (email or whatsapp)
-						// so we can pass them directly to invite-bulk.
-
-						try {
-							const inviteResponse = (await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
-								method: 'POST',
-								url: `${baseUrl}/v2/documents/${docId}/invite-bulk`,
-								body: {
-									participants,
-									config: {
-										invitedByEmail: inviterEmail,
-									},
-								},
-								json: true,
-							})) as IDataObject;
-
-							createResponse.invitations = inviteResponse;
-						} catch (inviteError) {
-							const invErr = inviteError as {
-								message?: string;
-								response?: { data?: unknown; status?: number };
-							};
-							const detail = invErr.response?.data
-								? JSON.stringify(invErr.response.data)
-								: invErr.message || 'Failed to send invitations';
-							createResponse.invitationError = detail;
-						}
-					}
-				}
-
-				// Build composite request body for output transparency
-
-				// Only include enabled validations
-				const enabledValidations: Record<string, boolean> = {};
-				for (const [key, val] of Object.entries(signatureValidation)) {
-					if (val === true) enabledValidations[key] = true;
-				}
-
-				const base64Preview = fileBase64.substring(0, 80) + '...';
-				const requestBody: Record<string, unknown> = {
-					document: {
-						name: body.document ? (body.document as Record<string, unknown>).name : fileName,
-						base64Content: base64Preview,
-					},
-					participants,
-				};
-
-				if (Object.keys(enabledValidations).length > 0) {
-					requestBody.signatureValidation = enabledValidations;
-				}
-				if (templateVariables) {
-					requestBody.placeholders = templateVariables;
-				}
-				if (folderId.trim()) {
-					requestBody.folderId = folderId.trim();
-				} else if (folderName.trim()) {
-					requestBody.folderName = folderName.trim();
-				}
-				if (Object.keys(permObj).length > 0) {
-					requestBody.permissions = permObj;
-				}
-				if (fields.length > 0) {
-					requestBody.fields = fields;
-				}
-
-				createResponse.requestBody = requestBody;
-				createResponse.documentBase64 = fileBase64;
 				returnData.push({ json: createResponse });
 			} catch (error) {
-				// Re-throw NodeOperationErrors directly (from our inner catch blocks)
+				// Re-throw NodeOperationErrors directly (from our inner validation checks)
 				if (error instanceof NodeOperationError) {
 					if (this.continueOnFail()) {
 						returnData.push({ json: { error: (error as Error).message } });
