@@ -6,60 +6,50 @@
 
 [n8n](https://n8n.io) integration for the **[AllSign](https://allsign.io)** e-signature platform.
 
-Create and send documents for electronic signature directly from your n8n workflows using the AllSign API V2.
+Create and send documents for electronic signature directly from your n8n workflows using the **AllSign API v3** — a single `POST /v3/documents` call with inline signers and signature validation (no separate add-signer/invite steps).
 
 ---
 
 ## ✨ Features
 
-### 📄 Document — Create & Send
+### 📄 Document — Create Document (v3)
 
-Upload a PDF or DOCX (from URL or binary input) and send it for signing in one step, with full control over signature requirements.
+Create a document from an inline **File** (PDF/DOCX, URL or binary input) or from an existing AllSign **Template** (by ID + variable values) — signers and signature validation travel inline in the same request.
 
 ### 📱 Signers: Email & WhatsApp
 
-Signers can be reached via **email**, **WhatsApp**, or **both**. When both channels are provided, the signer verifies their identity through OTP on both channels as part of the signing process.
+Signers can be reached via **email** or **WhatsApp**. Each signer can also carry an optional **Role Name**, used to auto-assign template variables marked with that role.
 
 - ✅ Email-only signers
 - ✅ WhatsApp-only signers (phone number, no email required)
-- ✅ Both channels — dual OTP verification during signing
+- ✅ Optional Role Name per signer
 
-### 🔐 10 Signature Validations
+### 🔐 6 Signature Validations
 
-| Validation                 | Description                                                          |
-| -------------------------- | -------------------------------------------------------------------- |
-| **Autógrafa**              | Handwritten digital signature with biometric capture (on by default) |
-| **FEA**                    | Advanced Electronic Signature — Mexico standard                      |
-| **eIDAS**                  | European Electronic Signature — eIDAS compliance                     |
-| **NOM-151**                | NOM-151-SCFI certified timestamping (Mexico)                         |
-| **Video Signature**        | Recorded video of the signer during the signing process              |
-| **Biometric Selfie**       | Face comparison against the signer's government ID                   |
-| **SynthID (AI Detection)** | Verifies selfie is from a real person, not AI-generated              |
-| **ID Scan**                | Government-issued ID scan (INE, passport, etc.)                      |
-| **Identity Verification**  | AI-powered ID + selfie verification pipeline                         |
-| **Confirm Name**           | Signer must type their full name as confirmation                     |
+| Validation           | Description                                                          |
+| --------------------- | --------------------------------------------------------------------- |
+| **Autógrafa**         | Handwritten digital signature (on by default)                         |
+| **NOM-151**           | NOM-151-SCFI certified conservation timestamping (Mexico)              |
+| **FEA**               | Advanced Electronic Signature — Mexico standard                       |
+| **Biometric Selfie**  | Face comparison against the signer's government ID (anti-deepfake)    |
+| **ID Scan**           | Government-issued ID scan (INE, passport, etc.)                       |
+| **Video Signature**   | Recorded video of the signer during the signing process               |
 
-### 📥 File Input
+### 📥 File Input (Source: File)
 
 - **Binary Input** — Use a file from a previous node (e.g. Google Drive, HTTP Request, Dropbox)
 - **URL** — Provide a public URL to a PDF or DOCX file (Google Drive and Dropbox links are auto-converted)
 
-### 📐 Signature Field Placement
+### 📑 Template Input (Source: Template)
 
-Place signature fields precisely on the document:
-
-- **By coordinates** — X, Y position on a specific page (or all pages)
-- **By anchor text** — Search for text in the PDF and place the field there
+Reference an existing AllSign template by **Template ID** and fill in its variables via **Template Values** (JSON, natural variable-name keys).
 
 ### ⚙️ Additional Options
 
-| Option                       | Description                                                         |
-| ---------------------------- | ------------------------------------------------------------------- |
-| **Folder**                   | Organize documents into folders (by name or ID)                     |
-| **Expires At**               | Set an expiration deadline — document auto-expires after this date  |
-| **Template Variables (DOCX)**| Replace `{{ variables }}` in DOCX templates with dynamic values     |
-| **Permissions**              | Set document owner, collaborators, and public read access           |
-| **Send Invitations**         | Auto-send or hold for manual sharing                                |
+| Option             | Description                                                            |
+| ------------------- | ------------------------------------------------------------------------ |
+| **Expires At**     | Set an expiration deadline — document auto-expires after this date       |
+| **Idempotency Key**| Safely retry the create request without creating a duplicate document    |
 
 ---
 
@@ -75,7 +65,7 @@ Place signature fields precisely on the document:
 ### 2. Use the Node
 
 1. Add the **AllSign** node to your workflow
-2. Set the document name and file source (URL or Binary)
+2. Set the document name and Source (File — URL or Binary — or an existing Template)
 3. Add signers (name + email and/or WhatsApp number)
 4. Toggle the signature validations you need
 5. Execute!
@@ -103,7 +93,7 @@ npm install
 | `npm run dev`         | Start n8n with hot reload    |
 | `npm run build`       | Compile TypeScript → `dist/` |
 | `npm run build:watch` | Compile in watch mode        |
-| `npm test`            | Run unit tests (39 tests)    |
+| `npm test`            | Run unit tests               |
 | `npm run lint`        | Check code style             |
 
 ### Project Structure
@@ -114,9 +104,9 @@ n8n-nodes-allsign/
 │   └── AllSignApi.credentials.ts        # API Key + Base URL credential
 ├── nodes/
 │   └── Allsign/
-│       ├── Allsign.node.ts              # Main node (Create & Send)
+│       ├── Allsign.node.ts              # Main node (Create Document, v3)
 │       ├── Allsign.node.json            # Codex metadata & SEO
-│       ├── Allsign.node.test.ts         # Unit tests (39 tests)
+│       ├── Allsign.node.test.ts         # Unit tests
 │       └── allsign.svg                  # Node icon
 ├── examples/
 │   ├── NDA_Automation_AllSign_Workflow.json  # Example workflow
