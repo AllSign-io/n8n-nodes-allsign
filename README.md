@@ -64,6 +64,8 @@ Send (or resend) the signing invitation for a document that already exists.
 | **Recipients** (optional) | Overrides who receives the invitation — same Delivery Method (Email/WhatsApp) shape as Signers. Leave empty to send to the signers already attached to the document |
 | **Idempotency Key** (optional) | Safely retry the send request without dispatching duplicate invitations |
 
+> **Idempotency Key is always sent, even if you leave it empty.** The AllSign API requires an `Idempotency-Key` header on every Create/Send request. If you don't set one, the node auto-generates a random UUID v4 per item — set your own only if you need a *stable* key across manual retries.
+
 ---
 
 ## 🚀 Getting Started

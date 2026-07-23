@@ -2,6 +2,12 @@
 
 All notable changes to `n8n-nodes-allsign` will be documented in this file.
 
+## [0.3.1] — 2026-07-23
+
+### 🐛 Fixed
+
+- **Auto-generate Idempotency-Key when not provided** — the AllSign API rejects `POST /v3/documents` (Create) and `POST /v3/documents/{documentId}/send` (Send) with `400 IDEMPOTENCY_KEY_REQUIRED` if the header is missing. The node used to only send it when the optional field was filled in, so it failed out-of-the-box. Now, when the user leaves Idempotency Key empty, the node generates a random UUID v4 per item (via `node:crypto`'s `randomUUID()`) and sends it as the `Idempotency-Key` header. A user-provided key (for stable retries) is still respected as-is.
+
 ## [0.3.0] — 2026-07-23
 
 ### ✨ Added

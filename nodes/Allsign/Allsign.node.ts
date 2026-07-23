@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type {
 	IDataObject,
 	IExecuteFunctions,
@@ -392,7 +393,7 @@ export class Allsign implements INodeType {
 						default: '',
 						placeholder: 'e.g. order-4821-create',
 						description:
-							'Optional key to safely retry this request without creating a duplicate document. Sent as the Idempotency-Key header.',
+							'Optional — set your own key to safely retry this request without creating a duplicate document. If left empty, a random UUID v4 is auto-generated per execution (the API requires this header on every write).',
 					},
 				],
 			},
@@ -506,7 +507,7 @@ export class Allsign implements INodeType {
 				type: 'string',
 				default: '',
 				placeholder: 'e.g. order-4821-send',
-				description: 'Optional key to safely retry this request without sending duplicate invitations. Sent as the Idempotency-Key header.',
+				description: 'Optional — set your own key to safely retry this request without sending duplicate invitations. If left empty, a random UUID v4 is auto-generated per execution (the API requires this header on every write).',
 				displayOptions: {
 					show: {
 						operation: ['sendDocument'],
@@ -580,7 +581,11 @@ export class Allsign implements INodeType {
 						return r;
 					});
 
-					const idempotencyKey = (this.getNodeParameter('idempotencyKey', i, '') as string).trim();
+					// The API requires Idempotency-Key on every write (400
+					// IDEMPOTENCY_KEY_REQUIRED) — auto-generate a UUID v4 per item
+					// when the user didn't provide a stable key of their own.
+					const idempotencyKey =
+						(this.getNodeParameter('idempotencyKey', i, '') as string).trim() || randomUUID();
 
 					const body: Record<string, unknown> = {};
 					if (recipients.length > 0) {
@@ -592,11 +597,8 @@ export class Allsign implements INodeType {
 						url: `${baseUrl}/v3/documents/${documentId}/send`,
 						body,
 						json: true,
+						headers: { 'Idempotency-Key': idempotencyKey },
 					};
-
-					if (idempotencyKey) {
-						requestOptions.headers = { 'Idempotency-Key': idempotencyKey };
-					}
 
 					// ── Single call: send the document to its signers (or overridden recipients) ──
 					let sendResponse: IDataObject;
@@ -631,7 +633,10 @@ export class Allsign implements INodeType {
 				// Configuration (from collapsible collection)
 				const configSettings = this.getNodeParameter('configuration', i, {}) as IDataObject;
 				const expiresAt = (configSettings.expiresAt as string) ?? '';
-				const idempotencyKey = (configSettings.idempotencyKey as string) ?? '';
+				// The API requires Idempotency-Key on every write (400
+				// IDEMPOTENCY_KEY_REQUIRED) — auto-generate a UUID v4 per item
+				// when the user didn't provide a stable key of their own.
+				const idempotencyKey = ((configSettings.idempotencyKey as string) ?? '').trim() || randomUUID();
 
 				// Signature Validations (from collapsible collection) — v3's curated 6-flag subset
 				const sigValidations = this.getNodeParameter('signatureValidations', i, {}) as IDataObject;
@@ -770,11 +775,8 @@ export class Allsign implements INodeType {
 					url: `${baseUrl}/v3/documents`,
 					body,
 					json: true,
+					headers: { 'Idempotency-Key': idempotencyKey },
 				};
-
-				if (idempotencyKey.trim()) {
-					requestOptions.headers = { 'Idempotency-Key': idempotencyKey.trim() };
-				}
 
 				// ── Single call: create the document with signers + validation inline ──
 				let createResponse: IDataObject;

@@ -3,6 +3,9 @@ import { Allsign } from './Allsign.node';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type NodeProp = Record<string, any>;
+
+const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 // ============================================================
 // Mock Helper
 // ============================================================
@@ -638,7 +641,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			expect(requestOptions.headers).toEqual({ 'Idempotency-Key': 'order-4821-create' });
 		});
 
-		it('should not include a headers key when Idempotency Key is omitted', async () => {
+		it('should auto-generate a UUID v4 Idempotency-Key when the user omits one (API requires it on every write)', async () => {
 			const pdfBuffer = Buffer.from('pdf');
 			mockHttpRequest.mockResolvedValueOnce(pdfBuffer);
 			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ id: 'doc_no_idem' });
@@ -655,7 +658,36 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 
 			await node.execute.call(fn);
 			const requestOptions = mockHttpRequestWithAuthentication.mock.calls[0][1];
-			expect(requestOptions.headers).toBeUndefined();
+			expect(requestOptions.headers).toBeDefined();
+			expect(requestOptions.headers['Idempotency-Key']).toMatch(UUID_V4_REGEX);
+		});
+
+		it('should generate a different Idempotency-Key per item (not reused within the same execution)', async () => {
+			mockHttpRequest.mockResolvedValueOnce(Buffer.from('pdf-1'));
+			mockHttpRequest.mockResolvedValueOnce(Buffer.from('pdf-2'));
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ id: 'doc_a' });
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ id: 'doc_b' });
+
+			const fn = getMockExecuteFunctions({
+				documentName: 'Doc',
+				source: 'file',
+				fileSource: 'url',
+				fileUrl: 'https://example.com/doc.pdf',
+				'signers.signerValues': [],
+				signatureValidations: {},
+				configuration: {},
+			});
+			// Two input items in the same execution — one item per invocation of the loop body.
+			(fn as unknown as Record<string, unknown>).getInputData = () => [{ json: {} }, { json: {} }];
+
+			await node.execute.call(fn);
+
+			expect(mockHttpRequestWithAuthentication).toHaveBeenCalledTimes(2);
+			const keyA = mockHttpRequestWithAuthentication.mock.calls[0][1].headers['Idempotency-Key'];
+			const keyB = mockHttpRequestWithAuthentication.mock.calls[1][1].headers['Idempotency-Key'];
+			expect(keyA).toMatch(UUID_V4_REGEX);
+			expect(keyB).toMatch(UUID_V4_REGEX);
+			expect(keyA).not.toBe(keyB);
 		});
 	});
 
@@ -722,7 +754,8 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			expect(call.url).toBe('https://api.allsign.io/v3/documents/doc_123/send');
 			expect(call.body).toEqual({});
 			expect(call.body.recipients).toBeUndefined();
-			expect(call.headers).toBeUndefined();
+			// The API requires Idempotency-Key on every write — auto-generated when omitted.
+			expect(call.headers['Idempotency-Key']).toMatch(UUID_V4_REGEX);
 
 			expect(result[0][0].json).toEqual(
 				expect.objectContaining({ id: 'doc_123', status: 'awaiting_signatures' }),
