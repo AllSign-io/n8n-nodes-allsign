@@ -38,7 +38,7 @@ const getMockExecuteFunctions = (params: Record<string, unknown>): IExecuteFunct
 // ============================================================
 // Tests
 // ============================================================
-describe('AllSign Node (API v3 — Create Document)', () => {
+describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 	const node = new Allsign();
 
 	beforeEach(() => {
@@ -53,11 +53,18 @@ describe('AllSign Node (API v3 — Create Document)', () => {
 			expect(node.description.displayName).toBe('AllSign');
 		});
 
-		it('should NOT have resource or operation properties (single-purpose node)', () => {
+		it('should NOT have a resource property (single-resource node: Document)', () => {
 			const resourceProp = node.description.properties.find((p) => p.name === 'resource');
-			const operationProp = node.description.properties.find((p) => p.name === 'operation');
 			expect(resourceProp).toBeUndefined();
-			expect(operationProp).toBeUndefined();
+		});
+
+		it('should have an Operation selector with Create Document and Send Document', () => {
+			const operationProp = node.description.properties.find((p) => p.name === 'operation');
+			expect(operationProp).toBeDefined();
+			expect((operationProp as NodeProp).type).toBe('options');
+			expect((operationProp as NodeProp).default).toBe('createDocument');
+			const values = (operationProp as NodeProp).options!.map((o: NodeProp) => o.value);
+			expect(values).toEqual(['createDocument', 'sendDocument']);
 		});
 
 		it('should have a Source selector with File and Template options', () => {
@@ -685,6 +692,164 @@ describe('AllSign Node (API v3 — Create Document)', () => {
 				{ name: 'Bob', email: 'bob@test.com' },
 				{ name: 'Charlie', phone: '+525500000000' },
 			]);
+		});
+	});
+
+	// ----------------------------------------------------------
+	// Send Document — v3 POST /documents/{documentId}/send
+	// ----------------------------------------------------------
+	describe('Send Document', () => {
+		it('should POST to /v3/documents/{documentId}/send with no body when no recipients are given', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({
+				id: 'doc_123',
+				object: 'document',
+				status: 'awaiting_signatures',
+			});
+
+			const fn = getMockExecuteFunctions({
+				operation: 'sendDocument',
+				documentId: 'doc_123',
+				'recipients.recipientValues': [],
+			});
+
+			const result = await node.execute.call(fn);
+
+			expect(mockHttpRequest).not.toHaveBeenCalled();
+			expect(mockHttpRequestWithAuthentication).toHaveBeenCalledTimes(1);
+
+			const call = mockHttpRequestWithAuthentication.mock.calls[0][1];
+			expect(call.method).toBe('POST');
+			expect(call.url).toBe('https://api.allsign.io/v3/documents/doc_123/send');
+			expect(call.body).toEqual({});
+			expect(call.body.recipients).toBeUndefined();
+			expect(call.headers).toBeUndefined();
+
+			expect(result[0][0].json).toEqual(
+				expect.objectContaining({ id: 'doc_123', status: 'awaiting_signatures' }),
+			);
+		});
+
+		it('should include recipients[] (camelCase email/phone/name) when provided', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ id: 'doc_456' });
+
+			const fn = getMockExecuteFunctions({
+				operation: 'sendDocument',
+				documentId: 'doc_456',
+				'recipients.recipientValues': [
+					{ name: 'Alice', deliveryMethod: 'email', email: 'alice@test.com' },
+					{ name: 'Bob', deliveryMethod: 'whatsapp', whatsapp: '+525500000000' },
+				],
+			});
+
+			await node.execute.call(fn);
+			const body = mockHttpRequestWithAuthentication.mock.calls[0][1].body;
+			expect(body.recipients).toEqual([
+				{ name: 'Alice', email: 'alice@test.com' },
+				{ name: 'Bob', phone: '+525500000000' },
+			]);
+		});
+
+		it('should allow a recipient with no name', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ id: 'doc_noname' });
+
+			const fn = getMockExecuteFunctions({
+				operation: 'sendDocument',
+				documentId: 'doc_noname',
+				'recipients.recipientValues': [
+					{ deliveryMethod: 'email', email: 'anon@test.com' },
+				],
+			});
+
+			await node.execute.call(fn);
+			const body = mockHttpRequestWithAuthentication.mock.calls[0][1].body;
+			expect(body.recipients).toEqual([{ email: 'anon@test.com' }]);
+		});
+
+		it('should send the Idempotency-Key header when provided', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ id: 'doc_idem' });
+
+			const fn = getMockExecuteFunctions({
+				operation: 'sendDocument',
+				documentId: 'doc_idem',
+				'recipients.recipientValues': [],
+				idempotencyKey: 'send-order-4821',
+			});
+
+			await node.execute.call(fn);
+			const requestOptions = mockHttpRequestWithAuthentication.mock.calls[0][1];
+			expect(requestOptions.headers).toEqual({ 'Idempotency-Key': 'send-order-4821' });
+		});
+
+		it('should throw when Document ID is missing', async () => {
+			const fn = getMockExecuteFunctions({
+				operation: 'sendDocument',
+				documentId: '',
+				'recipients.recipientValues': [],
+			});
+
+			await expect(node.execute.call(fn)).rejects.toThrow('Document ID is required');
+		});
+
+		it('should throw when a recipient has Email delivery method but no email', async () => {
+			const fn = getMockExecuteFunctions({
+				operation: 'sendDocument',
+				documentId: 'doc_bad',
+				'recipients.recipientValues': [
+					{ name: 'NoEmail', deliveryMethod: 'email', email: '' },
+				],
+			});
+
+			await expect(node.execute.call(fn)).rejects.toThrow(
+				'Recipient "NoEmail" has Email as delivery method but no email address was provided',
+			);
+		});
+
+		it('should throw when a recipient has WhatsApp delivery method but no number', async () => {
+			const fn = getMockExecuteFunctions({
+				operation: 'sendDocument',
+				documentId: 'doc_bad',
+				'recipients.recipientValues': [
+					{ name: 'NoPhone', deliveryMethod: 'whatsapp', whatsapp: '' },
+				],
+			});
+
+			await expect(node.execute.call(fn)).rejects.toThrow(
+				'Recipient "NoPhone" has WhatsApp as delivery method but no WhatsApp number was provided',
+			);
+		});
+
+		it('should throw NodeApiError when the send request fails', async () => {
+			mockHttpRequestWithAuthentication.mockRejectedValueOnce({
+				message: 'Request failed with status code 409',
+				response: { data: { message: 'Document already signed' }, status: 409 },
+			});
+
+			const fn = getMockExecuteFunctions({
+				operation: 'sendDocument',
+				documentId: 'doc_conflict',
+				'recipients.recipientValues': [],
+			});
+
+			await expect(node.execute.call(fn)).rejects.toThrow();
+		});
+
+		it('should not call any Create Document parameters when sending', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ id: 'doc_isolated' });
+
+			const fn = getMockExecuteFunctions({
+				operation: 'sendDocument',
+				documentId: 'doc_isolated',
+				'recipients.recipientValues': [],
+			});
+
+			await node.execute.call(fn);
+
+			// No file download and no Create Document body shape
+			expect(mockHttpRequest).not.toHaveBeenCalled();
+			const body = mockHttpRequestWithAuthentication.mock.calls[0][1].body;
+			expect(body).not.toHaveProperty('source');
+			expect(body).not.toHaveProperty('signatureValidation');
+			expect(body).not.toHaveProperty('name');
 		});
 	});
 

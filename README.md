@@ -6,13 +6,16 @@
 
 [n8n](https://n8n.io) integration for the **[AllSign](https://allsign.io)** e-signature platform.
 
-Create and send documents for electronic signature directly from your n8n workflows using the **AllSign API v3** — a single `POST /v3/documents` call with inline signers and signature validation (no separate add-signer/invite steps).
+Create and send documents for electronic signature directly from your n8n workflows using the **AllSign API v3**. The node has two operations:
+
+- **Create Document** — a single `POST /v3/documents` call with inline signers and signature validation (no separate add-signer/invite steps).
+- **Send Document** — `POST /v3/documents/{documentId}/send`, to (re)send the invitation for a document that already exists, optionally overriding who receives it.
 
 ---
 
 ## ✨ Features
 
-### 📄 Document — Create Document (v3)
+### 📄 Operation: Create Document
 
 Create a document from an inline **File** (PDF/DOCX, URL or binary input) or from an existing AllSign **Template** (by ID + variable values) — signers and signature validation travel inline in the same request.
 
@@ -51,6 +54,16 @@ Reference an existing AllSign template by **Template ID** and fill in its variab
 | **Expires At**     | Set an expiration deadline — document auto-expires after this date       |
 | **Idempotency Key**| Safely retry the create request without creating a duplicate document    |
 
+### 📤 Operation: Send Document
+
+Send (or resend) the signing invitation for a document that already exists.
+
+| Field | Description |
+|:---|:---|
+| **Document ID** | The `doc_...` of the document to send (required) |
+| **Recipients** (optional) | Overrides who receives the invitation — same Delivery Method (Email/WhatsApp) shape as Signers. Leave empty to send to the signers already attached to the document |
+| **Idempotency Key** (optional) | Safely retry the send request without dispatching duplicate invitations |
+
 ---
 
 ## 🚀 Getting Started
@@ -64,13 +77,20 @@ Reference an existing AllSign template by **Template ID** and fill in its variab
 
 ### 2. Use the Node
 
-1. Add the **AllSign** node to your workflow
+**To create a document:**
+1. Add the **AllSign** node to your workflow, leave **Operation** as **Create Document**
 2. Set the document name and Source (File — URL or Binary — or an existing Template)
 3. Add signers (name + email and/or WhatsApp number)
 4. Toggle the signature validations you need
 5. Execute!
 
-The signing invitation channel (email or WhatsApp) is auto-detected per signer based on the contact information provided.
+**To send an existing document:**
+1. Add the **AllSign** node, set **Operation** to **Send Document**
+2. Set the **Document ID** (e.g. from a previous Create Document node's output)
+3. Optionally add Recipients to override who gets invited
+4. Execute!
+
+The signing invitation channel (email or WhatsApp) is auto-detected per signer/recipient based on the contact information provided.
 
 ---
 
@@ -104,7 +124,7 @@ n8n-nodes-allsign/
 │   └── AllSignApi.credentials.ts        # API Key + Base URL credential
 ├── nodes/
 │   └── Allsign/
-│       ├── Allsign.node.ts              # Main node (Create Document, v3)
+│       ├── Allsign.node.ts              # Main node (Create Document + Send Document, v3)
 │       ├── Allsign.node.json            # Codex metadata & SEO
 │       ├── Allsign.node.test.ts         # Unit tests
 │       └── allsign.svg                  # Node icon

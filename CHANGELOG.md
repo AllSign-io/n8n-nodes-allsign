@@ -2,6 +2,19 @@
 
 All notable changes to `n8n-nodes-allsign` will be documented in this file.
 
+## [0.3.0] — 2026-07-23
+
+### ✨ Added
+
+- **Send Document operation** — new `Operation` selector (Create Document / Send Document) makes the node multi-operation. Send Document calls `POST /v3/documents/{documentId}/send`, which advances the document's state and dispatches the signing invitation.
+- **Recipients (optional)** — a `fixedCollection` matching the Signers UX (Delivery Method: Email/WhatsApp, Name), mapped to `recipients[]` (camelCase `email`/`phone`/`name`). Leave empty to send to the signers already attached to the document — the backend falls back to them when `recipients` is omitted.
+- **Idempotency Key** for Send Document, same pattern as Create Document (sent as the `Idempotency-Key` header).
+
+### 🔄 Changed
+
+- The node's `subtitle` is now dynamic (`Create Document` / `Send Document`) based on the selected operation.
+- Existing Create Document fields (`Document Name`, `Source`, `Signers`, `Signature Validations`, `Configuration`, etc.) are unchanged in behavior — they're now gated behind `Operation = Create Document` for the UI, with no change to the request body they produce. All 38 existing Create Document tests still pass unmodified.
+
 ## [0.2.0] — 2026-07-21
 
 ### 🔄 Changed

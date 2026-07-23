@@ -16,9 +16,9 @@ export class Allsign implements INodeType {
 		icon: 'file:allsign.svg',
 		group: ['transform'],
 		version: 1,
-		subtitle: 'Create Document (v3)',
+		subtitle: '={{$parameter["operation"] === "sendDocument" ? "Send Document" : "Create Document"}}',
 		description:
-			'Create and send documents for e-signature with the AllSign API v3 — a single call with inline signers and signature validation. NOM-151, FEA, biometric verification.',
+			'Create and send documents for e-signature with the AllSign API v3 — create with inline signers and signature validation, or send an already-created document to its signers. NOM-151, FEA, biometric verification.',
 		defaults: {
 			name: 'AllSign',
 		},
@@ -45,7 +45,32 @@ export class Allsign implements INodeType {
 		},
 		properties: [
 			// ====================================================
-			// DOCUMENT DETAILS
+			// OPERATION
+			// ====================================================
+			{
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				default: 'createDocument',
+				options: [
+					{
+						name: 'Create Document',
+						value: 'createDocument',
+						description: 'Create a document from a file or template, with inline signers and signature validation',
+						action: 'Create a document',
+					},
+					{
+						name: 'Send Document',
+						value: 'sendDocument',
+						description: 'Send an existing document to its signers, optionally overriding recipients',
+						action: 'Send a document',
+					},
+				],
+			},
+
+			// ====================================================
+			// DOCUMENT DETAILS (Create Document)
 			// ====================================================
 
 			// ------ Document Name ------
@@ -57,6 +82,11 @@ export class Allsign implements INodeType {
 				required: true,
 				placeholder: 'e.g. Contract Q1 2026',
 				description: 'Name for the new document',
+				displayOptions: {
+					show: {
+						operation: ['createDocument'],
+					},
+				},
 			},
 
 			// ------ Source ------
@@ -66,6 +96,11 @@ export class Allsign implements INodeType {
 				type: 'options',
 				default: 'file',
 				description: 'Where the document content comes from — an inline file or an existing AllSign template',
+				displayOptions: {
+					show: {
+						operation: ['createDocument'],
+					},
+				},
 				options: [
 					{
 						name: 'File',
@@ -88,6 +123,7 @@ export class Allsign implements INodeType {
 				default: 'binary',
 				displayOptions: {
 					show: {
+						operation: ['createDocument'],
 						source: ['file'],
 					},
 				},
@@ -112,6 +148,7 @@ export class Allsign implements INodeType {
 				description: 'Name of the binary property containing the file',
 				displayOptions: {
 					show: {
+						operation: ['createDocument'],
 						source: ['file'],
 						fileSource: ['binary'],
 					},
@@ -126,6 +163,7 @@ export class Allsign implements INodeType {
 				description: 'URL of the file. Supports direct links, Google Drive, and Dropbox — auto-converted to download URLs. For Google Drive, the file must be shared as "Anyone with the link". For private files, use Binary Input with the Google Drive node.',
 				displayOptions: {
 					show: {
+						operation: ['createDocument'],
 						source: ['file'],
 						fileSource: ['url'],
 					},
@@ -143,6 +181,7 @@ export class Allsign implements INodeType {
 				description: 'ID of an existing AllSign template',
 				displayOptions: {
 					show: {
+						operation: ['createDocument'],
 						source: ['template'],
 					},
 				},
@@ -156,13 +195,14 @@ export class Allsign implements INodeType {
 				description: 'Key-value pairs to fill in the template variables. Keys are the template\'s natural variable names (never camelCased).',
 				displayOptions: {
 					show: {
+						operation: ['createDocument'],
 						source: ['template'],
 					},
 				},
 			},
 
 			// ====================================================
-			// SIGNERS
+			// SIGNERS (Create Document)
 			// ====================================================
 			{
 				displayName: 'Signers',
@@ -175,6 +215,11 @@ export class Allsign implements INodeType {
 				required: true,
 				placeholder: 'Add Signer',
 				description: 'People who need to sign the document. Each signer receives their invitation via their chosen delivery method — email or WhatsApp.',
+				displayOptions: {
+					show: {
+						operation: ['createDocument'],
+					},
+				},
 				options: [
 					{
 						name: 'signerValues',
@@ -249,7 +294,7 @@ export class Allsign implements INodeType {
 			},
 
 			// ====================================================
-			// 🛡️ SIGNATURE VALIDATIONS (collapsible)
+			// 🛡️ SIGNATURE VALIDATIONS (collapsible, Create Document)
 			// ====================================================
 			{
 				displayName: 'Signature Validations',
@@ -259,6 +304,11 @@ export class Allsign implements INodeType {
 				default: {},
 				description:
 					'Signature types and verification methods for legal validity and security',
+				displayOptions: {
+					show: {
+						operation: ['createDocument'],
+					},
+				},
 				options: [
 					{
 						displayName: 'Biometric Selfie',
@@ -312,7 +362,7 @@ export class Allsign implements INodeType {
 			},
 
 			// ====================================================
-			// ⚙️ CONFIGURATION (collapsible)
+			// ⚙️ CONFIGURATION (collapsible, Create Document)
 			// ====================================================
 			{
 				displayName: 'Configuration',
@@ -321,6 +371,11 @@ export class Allsign implements INodeType {
 				placeholder: 'Configure',
 				default: {},
 				description: 'Controls expiration and request idempotency',
+				displayOptions: {
+					show: {
+						operation: ['createDocument'],
+					},
+				},
 				options: [
 					{
 						displayName: 'Expires At',
@@ -341,6 +396,123 @@ export class Allsign implements INodeType {
 					},
 				],
 			},
+
+			// ====================================================
+			// DOCUMENT (Send Document)
+			// ====================================================
+			{
+				displayName: 'Document ID',
+				name: 'documentId',
+				type: 'string',
+				default: '',
+				required: true,
+				placeholder: 'doc_...',
+				description: 'ID of the document to send — must already have signers attached (e.g. from Create Document)',
+				displayOptions: {
+					show: {
+						operation: ['sendDocument'],
+					},
+				},
+			},
+
+			// ====================================================
+			// RECIPIENTS (Send Document)
+			// ====================================================
+			{
+				displayName: 'Recipients',
+				name: 'recipients',
+				type: 'fixedCollection',
+				typeOptions: {
+					multipleValues: true,
+				},
+				default: {},
+				placeholder: 'Add Recipient',
+				description: 'Optional — overrides who receives the invitation. Leave empty to send to the signers already attached to the document.',
+				displayOptions: {
+					show: {
+						operation: ['sendDocument'],
+					},
+				},
+				options: [
+					{
+						name: 'recipientValues',
+						displayName: 'Recipient',
+						values: [
+							{
+								displayName: 'Delivery Method',
+								name: 'deliveryMethod',
+								type: 'options',
+								default: 'email',
+								description: 'How the invitation will be delivered to this recipient',
+								options: [
+									{
+										name: 'Email',
+										value: 'email',
+										description: 'Send the invitation via email',
+									},
+									{
+										name: 'WhatsApp',
+										value: 'whatsapp',
+										description: 'Send the invitation via WhatsApp',
+									},
+								],
+							},
+							{
+								displayName: 'Email',
+								name: 'email',
+								type: 'string',
+								placeholder: 'name@email.com',
+								default: '',
+								required: true,
+								description: 'Email address of the recipient',
+								displayOptions: {
+									show: {
+										deliveryMethod: ['email'],
+									},
+								},
+							},
+							{
+								displayName: 'Name',
+								name: 'name',
+								type: 'string',
+								default: '',
+								description: 'Name of the recipient (optional)',
+							},
+							{
+								displayName: 'WhatsApp',
+								name: 'whatsapp',
+								type: 'string',
+								default: '',
+								placeholder: '+525512345678',
+								required: true,
+								description: 'WhatsApp number with country code (e.g. +525512345678)',
+								displayOptions: {
+									show: {
+										deliveryMethod: ['whatsapp'],
+									},
+								},
+							},
+						],
+					},
+				],
+			},
+
+			// ====================================================
+			// ⚙️ CONFIGURATION (Send Document)
+			// ====================================================
+			{
+				displayName: 'Idempotency Key',
+				name: 'idempotencyKey',
+				type: 'string',
+				default: '',
+				placeholder: 'e.g. order-4821-send',
+				description: 'Optional key to safely retry this request without sending duplicate invitations. Sent as the Idempotency-Key header.',
+				displayOptions: {
+					show: {
+						operation: ['sendDocument'],
+					},
+				},
+			},
 		],
 	};
 
@@ -355,6 +527,96 @@ export class Allsign implements INodeType {
 
 		for (let i = 0; i < items.length; i++) {
 			try {
+				const operation = this.getNodeParameter('operation', i, 'createDocument') as string;
+
+				if (operation === 'sendDocument') {
+					const documentId = (this.getNodeParameter('documentId', i) as string).trim();
+					if (!documentId) {
+						throw new NodeOperationError(this.getNode(), 'Document ID is required', {
+							itemIndex: i,
+						});
+					}
+
+					const recipientsData = this.getNodeParameter('recipients.recipientValues', i, []) as Array<{
+						name?: string;
+						deliveryMethod: string;
+						email?: string;
+						whatsapp?: string;
+					}>;
+
+					// Build recipients[] — each recipient uses exactly one delivery method
+					const recipients = recipientsData.map((recipient) => {
+						const r: Record<string, string> = {};
+						const method = recipient.deliveryMethod || 'email';
+						const label = recipient.name ? ` "${recipient.name}"` : '';
+
+						if (method === 'email') {
+							const email = (recipient.email || '').trim();
+							if (!email) {
+								throw new NodeOperationError(
+									this.getNode(),
+									`Recipient${label} has Email as delivery method but no email address was provided`,
+									{ itemIndex: i },
+								);
+							}
+							r.email = email;
+						} else {
+							const whatsapp = (recipient.whatsapp || '').trim();
+							if (!whatsapp) {
+								throw new NodeOperationError(
+									this.getNode(),
+									`Recipient${label} has WhatsApp as delivery method but no WhatsApp number was provided`,
+									{ itemIndex: i },
+								);
+							}
+							r.phone = whatsapp;
+						}
+
+						const name = (recipient.name || '').trim();
+						if (name) {
+							r.name = name;
+						}
+
+						return r;
+					});
+
+					const idempotencyKey = (this.getNodeParameter('idempotencyKey', i, '') as string).trim();
+
+					const body: Record<string, unknown> = {};
+					if (recipients.length > 0) {
+						body.recipients = recipients;
+					}
+
+					const requestOptions: IHttpRequestOptions = {
+						method: 'POST',
+						url: `${baseUrl}/v3/documents/${documentId}/send`,
+						body,
+						json: true,
+					};
+
+					if (idempotencyKey) {
+						requestOptions.headers = { 'Idempotency-Key': idempotencyKey };
+					}
+
+					// ── Single call: send the document to its signers (or overridden recipients) ──
+					let sendResponse: IDataObject;
+					try {
+						sendResponse = (await this.helpers.httpRequestWithAuthentication.call(
+							this,
+							'allSignApi',
+							requestOptions,
+						)) as IDataObject;
+					} catch (sendError) {
+						throw new NodeApiError(this.getNode(), sendError as JsonObject, {
+							message: 'Document send failed',
+							itemIndex: i,
+						});
+					}
+
+					returnData.push({ json: sendResponse });
+					continue;
+				}
+
 				const documentName = this.getNodeParameter('documentName', i) as string;
 				const source = this.getNodeParameter('source', i, 'file') as string;
 
