@@ -61,21 +61,44 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			expect(resourceProp).toBeUndefined();
 		});
 
-		it('should have an Operation selector with Create Document, Send Document, and Get Document', () => {
+		it('should have an Operation selector with all 8 operations', () => {
 			const operationProp = node.description.properties.find((p) => p.name === 'operation');
 			expect(operationProp).toBeDefined();
 			expect((operationProp as NodeProp).type).toBe('options');
 			expect((operationProp as NodeProp).default).toBe('createDocument');
 			const values = (operationProp as NodeProp).options!.map((o: NodeProp) => o.value);
-			expect(values).toEqual(['createDocument', 'sendDocument', 'getDocument']);
+			expect(values).toEqual([
+				'createDocument',
+				'getDocument',
+				'getDocumentEvidence',
+				'listDocuments',
+				'listDocumentSigners',
+				'remindSigner',
+				'sendDocument',
+				'voidDocument',
+			]);
 		});
 
-		it('should show Document ID for both Send Document and Get Document', () => {
+		it('should show Document ID for every operation that needs it', () => {
 			const documentIdProp = node.description.properties.find((p) => p.name === 'documentId');
 			expect(documentIdProp).toBeDefined();
 			expect((documentIdProp as NodeProp).displayOptions.show.operation).toEqual([
 				'sendDocument',
 				'getDocument',
+				'listDocumentSigners',
+				'getDocumentEvidence',
+				'voidDocument',
+				'remindSigner',
+			]);
+		});
+
+		it('should share Idempotency Key across the three write operations (Send/Void/Remind)', () => {
+			const idempotencyKeyProp = node.description.properties.find((p) => p.name === 'idempotencyKey');
+			expect(idempotencyKeyProp).toBeDefined();
+			expect((idempotencyKeyProp as NodeProp).displayOptions.show.operation).toEqual([
+				'sendDocument',
+				'voidDocument',
+				'remindSigner',
 			]);
 		});
 
@@ -974,6 +997,352 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 
 			const result = await node.execute.call(fn);
 			expect(result[0][0].json).toHaveProperty('error');
+		});
+	});
+
+	// ----------------------------------------------------------
+	// List Documents — v3 GET /documents
+	// ----------------------------------------------------------
+	describe('List Documents', () => {
+		it('should GET /v3/documents with limit=20 by default, no body, no Idempotency-Key', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({
+				object: 'list',
+				data: [{ id: 'doc_1' }, { id: 'doc_2' }],
+				hasMore: false,
+			});
+
+			const fn = getMockExecuteFunctions({
+				operation: 'listDocuments',
+			});
+
+			const result = await node.execute.call(fn);
+
+			expect(mockHttpRequestWithAuthentication).toHaveBeenCalledTimes(1);
+			const call = mockHttpRequestWithAuthentication.mock.calls[0][1];
+			expect(call.method).toBe('GET');
+			expect(call.url).toBe('https://api.allsign.io/v3/documents');
+			expect(call.qs).toEqual({ limit: 20 });
+			expect(call.body).toBeUndefined();
+			expect(call.headers).toBeUndefined();
+
+			expect(result[0][0].json).toEqual(
+				expect.objectContaining({ object: 'list', data: [{ id: 'doc_1' }, { id: 'doc_2' }] }),
+			);
+		});
+
+		it('should only include filters the user actually set', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ object: 'list', data: [] });
+
+			const fn = getMockExecuteFunctions({
+				operation: 'listDocuments',
+				limit: 5,
+				filters: {
+					status: 'completed',
+					scope: 'org',
+					search: 'contract',
+					startingAfter: 'doc_abc',
+					folderId: 'fld_123',
+					includeTotal: true,
+				},
+			});
+
+			await node.execute.call(fn);
+			const call = mockHttpRequestWithAuthentication.mock.calls[0][1];
+			expect(call.qs).toEqual({
+				limit: 5,
+				status: 'completed',
+				scope: 'org',
+				search: 'contract',
+				startingAfter: 'doc_abc',
+				folderId: 'fld_123',
+				includeTotal: true,
+			});
+		});
+
+		it('should not send includeTotal or empty filters when left at defaults', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ object: 'list', data: [] });
+
+			const fn = getMockExecuteFunctions({
+				operation: 'listDocuments',
+				filters: {},
+			});
+
+			await node.execute.call(fn);
+			const call = mockHttpRequestWithAuthentication.mock.calls[0][1];
+			expect(call.qs).toEqual({ limit: 20 });
+		});
+
+		it('should throw NodeApiError on API failure', async () => {
+			mockHttpRequestWithAuthentication.mockRejectedValueOnce({
+				message: 'Request failed with status code 401',
+				response: { data: { message: 'Unauthorized' }, status: 401 },
+			});
+
+			const fn = getMockExecuteFunctions({ operation: 'listDocuments' });
+
+			await expect(node.execute.call(fn)).rejects.toThrow();
+		});
+	});
+
+	// ----------------------------------------------------------
+	// List Signers — v3 GET /documents/{documentId}/signers
+	// ----------------------------------------------------------
+	describe('List Signers', () => {
+		it('should GET /v3/documents/{documentId}/signers with no body and no Idempotency-Key', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({
+				object: 'list',
+				data: [{ id: 'sgr_1', status: 'signed' }],
+			});
+
+			const fn = getMockExecuteFunctions({
+				operation: 'listDocumentSigners',
+				documentId: 'doc_123',
+			});
+
+			const result = await node.execute.call(fn);
+
+			const call = mockHttpRequestWithAuthentication.mock.calls[0][1];
+			expect(call.method).toBe('GET');
+			expect(call.url).toBe('https://api.allsign.io/v3/documents/doc_123/signers');
+			expect(call.body).toBeUndefined();
+			expect(call.headers).toBeUndefined();
+
+			expect(result[0][0].json).toEqual(
+				expect.objectContaining({ data: [{ id: 'sgr_1', status: 'signed' }] }),
+			);
+		});
+
+		it('should throw when Document ID is missing', async () => {
+			const fn = getMockExecuteFunctions({
+				operation: 'listDocumentSigners',
+				documentId: '',
+			});
+
+			await expect(node.execute.call(fn)).rejects.toThrow('Document ID is required');
+		});
+
+		it('should throw NodeApiError when the document is not found', async () => {
+			mockHttpRequestWithAuthentication.mockRejectedValueOnce({
+				message: 'Request failed with status code 404',
+				response: { data: { message: 'Document not found' }, status: 404 },
+			});
+
+			const fn = getMockExecuteFunctions({
+				operation: 'listDocumentSigners',
+				documentId: 'doc_missing',
+			});
+
+			await expect(node.execute.call(fn)).rejects.toThrow();
+		});
+	});
+
+	// ----------------------------------------------------------
+	// Get Evidence — v3 GET /documents/{documentId}/evidence
+	// ----------------------------------------------------------
+	describe('Get Evidence', () => {
+		it('should GET /v3/documents/{documentId}/evidence with no body and no Idempotency-Key', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({
+				documentId: 'doc_123',
+				available: false,
+				evidencePdf: null,
+				nom151: null,
+			});
+
+			const fn = getMockExecuteFunctions({
+				operation: 'getDocumentEvidence',
+				documentId: 'doc_123',
+			});
+
+			const result = await node.execute.call(fn);
+
+			const call = mockHttpRequestWithAuthentication.mock.calls[0][1];
+			expect(call.method).toBe('GET');
+			expect(call.url).toBe('https://api.allsign.io/v3/documents/doc_123/evidence');
+			expect(call.body).toBeUndefined();
+			expect(call.headers).toBeUndefined();
+
+			expect(result[0][0].json).toEqual(expect.objectContaining({ available: false }));
+		});
+
+		it('should throw when Document ID is missing', async () => {
+			const fn = getMockExecuteFunctions({
+				operation: 'getDocumentEvidence',
+				documentId: '',
+			});
+
+			await expect(node.execute.call(fn)).rejects.toThrow('Document ID is required');
+		});
+
+		it('should throw NodeApiError on API failure', async () => {
+			mockHttpRequestWithAuthentication.mockRejectedValueOnce({
+				message: 'Request failed with status code 404',
+				response: { data: { message: 'Document not found' }, status: 404 },
+			});
+
+			const fn = getMockExecuteFunctions({
+				operation: 'getDocumentEvidence',
+				documentId: 'doc_missing',
+			});
+
+			await expect(node.execute.call(fn)).rejects.toThrow();
+		});
+	});
+
+	// ----------------------------------------------------------
+	// Void Document — v3 POST /documents/{documentId}/void
+	// ----------------------------------------------------------
+	describe('Void Document', () => {
+		it('should POST /v3/documents/{documentId}/void with an auto-generated Idempotency-Key and no reason', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({
+				id: 'doc_123',
+				status: 'voided',
+			});
+
+			const fn = getMockExecuteFunctions({
+				operation: 'voidDocument',
+				documentId: 'doc_123',
+			});
+
+			const result = await node.execute.call(fn);
+
+			const call = mockHttpRequestWithAuthentication.mock.calls[0][1];
+			expect(call.method).toBe('POST');
+			expect(call.url).toBe('https://api.allsign.io/v3/documents/doc_123/void');
+			expect(call.body).toEqual({});
+			expect(call.headers['Idempotency-Key']).toMatch(UUID_V4_REGEX);
+
+			expect(result[0][0].json).toEqual(expect.objectContaining({ status: 'voided' }));
+		});
+
+		it('should include reason in the body when provided', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ id: 'doc_456', status: 'voided' });
+
+			const fn = getMockExecuteFunctions({
+				operation: 'voidDocument',
+				documentId: 'doc_456',
+				reason: 'Contract superseded',
+			});
+
+			await node.execute.call(fn);
+			const body = mockHttpRequestWithAuthentication.mock.calls[0][1].body;
+			expect(body).toEqual({ reason: 'Contract superseded' });
+		});
+
+		it('should respect a user-provided Idempotency Key', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ id: 'doc_789' });
+
+			const fn = getMockExecuteFunctions({
+				operation: 'voidDocument',
+				documentId: 'doc_789',
+				idempotencyKey: 'void-order-99',
+			});
+
+			await node.execute.call(fn);
+			const requestOptions = mockHttpRequestWithAuthentication.mock.calls[0][1];
+			expect(requestOptions.headers).toEqual({ 'Idempotency-Key': 'void-order-99' });
+		});
+
+		it('should throw when Document ID is missing', async () => {
+			const fn = getMockExecuteFunctions({
+				operation: 'voidDocument',
+				documentId: '',
+			});
+
+			await expect(node.execute.call(fn)).rejects.toThrow('Document ID is required');
+		});
+
+		it('should throw NodeApiError when the document is already fully signed', async () => {
+			mockHttpRequestWithAuthentication.mockRejectedValueOnce({
+				message: 'Request failed with status code 409',
+				response: { data: { message: 'A fully signed document cannot be voided.' }, status: 409 },
+			});
+
+			const fn = getMockExecuteFunctions({
+				operation: 'voidDocument',
+				documentId: 'doc_signed',
+			});
+
+			await expect(node.execute.call(fn)).rejects.toThrow();
+		});
+	});
+
+	// ----------------------------------------------------------
+	// Remind Signer — v3 POST /documents/{documentId}/signers/{signerId}/remind
+	// ----------------------------------------------------------
+	describe('Remind Signer', () => {
+		it('should POST .../remind with an auto-generated Idempotency-Key and no body', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({
+				documentId: 'doc_123',
+				signerId: 'sgr_456',
+				delivered: true,
+				channel: 'email',
+			});
+
+			const fn = getMockExecuteFunctions({
+				operation: 'remindSigner',
+				documentId: 'doc_123',
+				signerId: 'sgr_456',
+			});
+
+			const result = await node.execute.call(fn);
+
+			const call = mockHttpRequestWithAuthentication.mock.calls[0][1];
+			expect(call.method).toBe('POST');
+			expect(call.url).toBe('https://api.allsign.io/v3/documents/doc_123/signers/sgr_456/remind');
+			expect(call.body).toBeUndefined();
+			expect(call.headers['Idempotency-Key']).toMatch(UUID_V4_REGEX);
+
+			expect(result[0][0].json).toEqual(expect.objectContaining({ delivered: true, channel: 'email' }));
+		});
+
+		it('should respect a user-provided Idempotency Key', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ delivered: true });
+
+			const fn = getMockExecuteFunctions({
+				operation: 'remindSigner',
+				documentId: 'doc_123',
+				signerId: 'sgr_456',
+				idempotencyKey: 'remind-order-7',
+			});
+
+			await node.execute.call(fn);
+			const requestOptions = mockHttpRequestWithAuthentication.mock.calls[0][1];
+			expect(requestOptions.headers).toEqual({ 'Idempotency-Key': 'remind-order-7' });
+		});
+
+		it('should throw when Document ID is missing', async () => {
+			const fn = getMockExecuteFunctions({
+				operation: 'remindSigner',
+				documentId: '',
+				signerId: 'sgr_456',
+			});
+
+			await expect(node.execute.call(fn)).rejects.toThrow('Document ID is required');
+		});
+
+		it('should throw when Signer ID is missing', async () => {
+			const fn = getMockExecuteFunctions({
+				operation: 'remindSigner',
+				documentId: 'doc_123',
+				signerId: '',
+			});
+
+			await expect(node.execute.call(fn)).rejects.toThrow('Signer ID is required');
+		});
+
+		it('should throw NodeApiError when rate-limited (429)', async () => {
+			mockHttpRequestWithAuthentication.mockRejectedValueOnce({
+				message: 'Request failed with status code 429',
+				response: { data: { message: 'Reminder already sent recently' }, status: 429 },
+			});
+
+			const fn = getMockExecuteFunctions({
+				operation: 'remindSigner',
+				documentId: 'doc_123',
+				signerId: 'sgr_456',
+			});
+
+			await expect(node.execute.call(fn)).rejects.toThrow();
 		});
 	});
 

@@ -6,11 +6,16 @@
 
 [n8n](https://n8n.io) integration for the **[AllSign](https://allsign.io)** e-signature platform.
 
-Create and send documents for electronic signature directly from your n8n workflows using the **AllSign API v3**. The node has three operations:
+Create, send, and manage documents for electronic signature directly from your n8n workflows using the **AllSign API v3**. The node has eight operations:
 
 - **Create Document** — a single `POST /v3/documents` call with inline signers and signature validation (no separate add-signer/invite steps).
 - **Send Document** — `POST /v3/documents/{documentId}/send`, to (re)send the invitation for a document that already exists, optionally overriding who receives it.
 - **Get Document** — `GET /v3/documents/{documentId}`, to retrieve a document by ID.
+- **List Documents** — `GET /v3/documents`, with optional filters and pagination.
+- **List Signers** — `GET /v3/documents/{documentId}/signers`, to list a document's signers.
+- **Get Evidence** — `GET /v3/documents/{documentId}/evidence`, to retrieve the signed PDF + NOM-151 constancia (presigned URLs).
+- **Void Document** — `POST /v3/documents/{documentId}/void`, to annul a document (not a delete — NOM-151 retention keeps the record).
+- **Remind Signer** — `POST /v3/documents/{documentId}/signers/{signerId}/remind`, to manually resend the invitation to one signer.
 
 ---
 
@@ -75,6 +80,55 @@ Retrieve a document by ID — read-only, no body, no `Idempotency-Key` (doesn't 
 |:---|:---|
 | **Document ID** | The `doc_...` of the document to retrieve (required) |
 
+### 📋 Operation: List Documents
+
+List documents — read-only, no body, no `Idempotency-Key`.
+
+| Field | Description |
+|:---|:---|
+| **Limit** | Max documents to return (1-100, default 20) |
+| **Filters** (optional collection) | **Status** (lifecycle), **Scope** (Owner/Organization/Tenant/Accessible), **Search** (free text), **Starting After** / **Ending Before** (pagination cursors), **Folder ID**, **Include Total** |
+
+Only the filters you actually set are sent to the API — everything else is omitted so the API applies its own defaults (e.g. `scope=owner`).
+
+### 👥 Operation: List Signers
+
+List a document's signers — read-only, no body, no `Idempotency-Key`.
+
+| Field | Description |
+|:---|:---|
+| **Document ID** | The `doc_...` whose signers you want to list (required) |
+
+### 🧾 Operation: Get Evidence
+
+Get a document's evidence bundle — read-only, no body, no `Idempotency-Key`.
+
+| Field | Description |
+|:---|:---|
+| **Document ID** | The `doc_...` of the document (required) |
+
+Returns presigned URLs for the fully-signed PDF and the NOM-151 conservation constancia. `available` is `false` until every signer has completed — poll until it flips to `true`.
+
+### 🚫 Operation: Void Document
+
+Void (annul) a document. Not a delete — NOM-151 retention keeps the voided record for audit purposes.
+
+| Field | Description |
+|:---|:---|
+| **Document ID** | The `doc_...` to void (required) |
+| **Reason** (optional) | Why the document is being voided — kept in the audit log; omitted from the request if left empty |
+| **Idempotency Key** (optional) | Safely retry without double-voiding |
+
+### 🔔 Operation: Remind Signer
+
+Manually resend the signing invitation to one signer who hasn't completed yet. Rate-limited by the API (once every 4 hours per signer).
+
+| Field | Description |
+|:---|:---|
+| **Document ID** | The `doc_...` the signer belongs to (required) |
+| **Signer ID** | The `sgr_...` to remind — get it from List Signers (required) |
+| **Idempotency Key** (optional) | Safely retry without sending a duplicate reminder |
+
 ---
 
 ## 🚀 Getting Started
@@ -101,9 +155,9 @@ Retrieve a document by ID — read-only, no body, no `Idempotency-Key` (doesn't 
 3. Optionally add Recipients to override who gets invited
 4. Execute!
 
-**To retrieve a document:**
-1. Add the **AllSign** node, set **Operation** to **Get Document**
-2. Set the **Document ID**
+**To retrieve, list, void, or remind:**
+1. Add the **AllSign** node, set **Operation** to **Get Document**, **List Documents**, **List Signers**, **Get Evidence**, **Void Document**, or **Remind Signer**
+2. Fill in the required ID(s) — **Document ID** (all except List Documents) and, for Remind Signer, the **Signer ID**
 3. Execute!
 
 The signing invitation channel (email or WhatsApp) is auto-detected per signer/recipient based on the contact information provided.
@@ -140,7 +194,7 @@ n8n-nodes-allsign/
 │   └── AllSignApi.credentials.ts        # API Key + Base URL credential
 ├── nodes/
 │   └── Allsign/
-│       ├── Allsign.node.ts              # Main node (Create Document + Send Document, v3)
+│       ├── Allsign.node.ts              # Main node (8 operations, v3)
 │       ├── Allsign.node.json            # Codex metadata & SEO
 │       ├── Allsign.node.test.ts         # Unit tests
 │       └── allsign.svg                  # Node icon

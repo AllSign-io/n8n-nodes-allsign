@@ -2,7 +2,23 @@
 
 All notable changes to `n8n-nodes-allsign` will be documented in this file.
 
-## [0.4.0] — 2026-07-23
+## [0.5.0] — 2026-07-23
+
+### ✨ Added
+
+Five new operations (Tier 2), bringing the node to 8 operations total:
+
+- **List Documents** (`GET /v3/documents`) — read-only, paginated. `Limit` (1-100, default 20) plus an optional `Filters` collection: Status, Scope, Search, Starting After, Ending Before, Folder ID, Include Total. Only the filters you set are sent.
+- **List Signers** (`GET /v3/documents/{documentId}/signers`) — read-only, returns a document's signers.
+- **Get Evidence** (`GET /v3/documents/{documentId}/evidence`) — read-only, returns the evidence bundle (signed PDF + NOM-151 constancia, presigned URLs). `available` is `false` until every signer completes.
+- **Void Document** (`POST /v3/documents/{documentId}/void`) — write. Optional `Reason`, omitted from the body when empty. Not a delete — NOM-151 retention keeps the voided record.
+- **Remind Signer** (`POST /v3/documents/{documentId}/signers/{signerId}/remind`) — write, no request body (the endpoint doesn't take one). New required `Signer ID` field, visible only for this operation.
+
+### 🔄 Changed
+
+- `Document ID` is now shared across six operations (Send, Get, List Signers, Get Evidence, Void, Remind) via one property with an extended `displayOptions`.
+- `Idempotency Key` (auto-generated UUID v4 when left empty) is now shared across all three write operations (Send, Void, Remind) via one property, generalized wording.
+- Dynamic `subtitle` now covers all 8 operations via a lookup table.
 
 ### ✨ Added
 

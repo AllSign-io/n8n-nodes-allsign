@@ -17,9 +17,10 @@ export class Allsign implements INodeType {
 		icon: 'file:allsign.svg',
 		group: ['transform'],
 		version: 1,
-		subtitle: '={{$parameter["operation"] === "sendDocument" ? "Send Document" : $parameter["operation"] === "getDocument" ? "Get Document" : "Create Document"}}',
+		subtitle:
+			'={{ ({ createDocument: "Create Document", sendDocument: "Send Document", getDocument: "Get Document", listDocuments: "List Documents", listDocumentSigners: "List Signers", getDocumentEvidence: "Get Evidence", voidDocument: "Void Document", remindSigner: "Remind Signer" })[$parameter["operation"]] }}',
 		description:
-			'Create and send documents for e-signature with the AllSign API v3 — create with inline signers and signature validation, send an already-created document to its signers, or retrieve a document by ID. NOM-151, FEA, biometric verification.',
+			'Create, send, retrieve, list, void, and remind on documents with the AllSign API v3 — inline signers and signature validation at creation, plus evidence bundles and manual reminders. NOM-151, FEA, biometric verification.',
 		defaults: {
 			name: 'AllSign',
 		},
@@ -62,16 +63,46 @@ export class Allsign implements INodeType {
 						action: 'Create a document',
 					},
 					{
+						name: 'Get Document',
+						value: 'getDocument',
+						description: 'Retrieve a document by ID',
+						action: 'Get a document',
+					},
+					{
+						name: 'Get Evidence',
+						value: 'getDocumentEvidence',
+						description: 'Get a document evidence bundle (signed PDF and NOM-151 constancia)',
+						action: 'Get document evidence',
+					},
+					{
+						name: 'List Documents',
+						value: 'listDocuments',
+						description: 'List documents, with optional filters',
+						action: 'List documents',
+					},
+					{
+						name: 'List Signers',
+						value: 'listDocumentSigners',
+						description: 'List the signers on a document',
+						action: 'List document signers',
+					},
+					{
+						name: 'Remind Signer',
+						value: 'remindSigner',
+						description: 'Send a manual reminder to a signer who has not completed yet',
+						action: 'Remind a signer',
+					},
+					{
 						name: 'Send Document',
 						value: 'sendDocument',
 						description: 'Send an existing document to its signers, optionally overriding recipients',
 						action: 'Send a document',
 					},
 					{
-						name: 'Get Document',
-						value: 'getDocument',
-						description: 'Retrieve a document by ID',
-						action: 'Get a document',
+						name: 'Void Document',
+						value: 'voidDocument',
+						description: 'Void (annul) a document — not a delete, the record is kept for NOM-151 retention',
+						action: 'Void a document',
 					},
 				],
 			},
@@ -405,7 +436,7 @@ export class Allsign implements INodeType {
 			},
 
 			// ====================================================
-			// DOCUMENT (Send Document / Get Document)
+			// DOCUMENT (Send / Get / List Signers / Get Evidence / Void / Remind)
 			// ====================================================
 			{
 				displayName: 'Document ID',
@@ -417,7 +448,14 @@ export class Allsign implements INodeType {
 				description: 'ID of the document (doc_...) — e.g. the ID returned by Create Document',
 				displayOptions: {
 					show: {
-						operation: ['sendDocument', 'getDocument'],
+						operation: [
+							'sendDocument',
+							'getDocument',
+							'listDocumentSigners',
+							'getDocumentEvidence',
+							'voidDocument',
+							'remindSigner',
+						],
 					},
 				},
 			},
@@ -505,7 +543,7 @@ export class Allsign implements INodeType {
 			},
 
 			// ====================================================
-			// ⚙️ CONFIGURATION (Send Document)
+			// ⚙️ CONFIGURATION (Send Document / Void Document / Remind Signer)
 			// ====================================================
 			{
 				displayName: 'Idempotency Key',
@@ -513,12 +551,151 @@ export class Allsign implements INodeType {
 				type: 'string',
 				default: '',
 				placeholder: 'e.g. order-4821-send',
-				description: 'Optional — set your own key to safely retry this request without sending duplicate invitations. If left empty, a random UUID v4 is auto-generated per execution (the API requires this header on every write).',
+				description: 'Optional — set your own key to safely retry this request without duplicating the effect (a second invitation, void, or reminder). If left empty, a random UUID v4 is auto-generated per execution (the API requires this header on every write).',
 				displayOptions: {
 					show: {
-						operation: ['sendDocument'],
+						operation: ['sendDocument', 'voidDocument', 'remindSigner'],
 					},
 				},
+			},
+
+			// ====================================================
+			// REASON (Void Document)
+			// ====================================================
+			{
+				displayName: 'Reason',
+				name: 'reason',
+				type: 'string',
+				default: '',
+				placeholder: 'e.g. Contract superseded by a new draft',
+				description: 'Optional — why the document is being voided. Kept in the document audit log.',
+				displayOptions: {
+					show: {
+						operation: ['voidDocument'],
+					},
+				},
+			},
+
+			// ====================================================
+			// SIGNER ID (Remind Signer)
+			// ====================================================
+			{
+				displayName: 'Signer ID',
+				name: 'signerId',
+				type: 'string',
+				default: '',
+				required: true,
+				placeholder: 'sgr_...',
+				description: 'ID of the signer to remind (sgr_...) — get it from List Signers',
+				displayOptions: {
+					show: {
+						operation: ['remindSigner'],
+					},
+				},
+			},
+
+			// ====================================================
+			// LIST DOCUMENTS
+			// ====================================================
+			{
+				displayName: 'Limit',
+				name: 'limit',
+				type: 'number',
+				// eslint-disable-next-line n8n-nodes-base/node-param-default-wrong-for-limit -- the AllSign API defaults `limit` to 20 (not n8n's usual 50); this matches GET /v3/documents server-side.
+				default: 20,
+				typeOptions: {
+					minValue: 1,
+					maxValue: 100,
+				},
+				// eslint-disable-next-line n8n-nodes-base/node-param-description-wrong-for-limit -- documents the real API default/range instead of the generic convention text.
+				description: 'Max number of documents to return (1-100, default 20 to match the API)',
+				displayOptions: {
+					show: {
+						operation: ['listDocuments'],
+					},
+				},
+			},
+			{
+				displayName: 'Filters',
+				name: 'filters',
+				type: 'collection',
+				placeholder: 'Add Filter',
+				default: {},
+				description: 'Optional filters and pagination cursors for the list',
+				displayOptions: {
+					show: {
+						operation: ['listDocuments'],
+					},
+				},
+				options: [
+					{
+						displayName: 'Ending Before',
+						name: 'endingBefore',
+						type: 'string',
+						default: '',
+						description: 'Cursor — return documents ending before this one (mutually exclusive with Starting After)',
+					},
+					{
+						displayName: 'Folder ID',
+						name: 'folderId',
+						type: 'string',
+						default: '',
+						placeholder: 'fld_...',
+						description: 'Only return documents in this folder',
+					},
+					{
+						displayName: 'Include Total',
+						name: 'includeTotal',
+						type: 'boolean',
+						default: false,
+						description: 'Whether to include the total match count (extra query cost)',
+					},
+					{
+						displayName: 'Scope',
+						name: 'scope',
+						type: 'options',
+						default: 'owner',
+						description: 'Which documents to include, relative to the caller',
+						options: [
+							{ name: 'Owner (Default)', value: 'owner', description: 'Only documents owned by the caller' },
+							{ name: 'Organization', value: 'org', description: "All documents in the caller's organization" },
+							{ name: 'Tenant', value: 'tenant', description: "All documents in the caller's tenant (multi-org admin scope)" },
+							{ name: 'Accessible', value: 'accessible', description: 'Documents the caller owns or participates in' },
+						],
+					},
+					{
+						displayName: 'Search',
+						name: 'search',
+						type: 'string',
+						default: '',
+						description: 'Free-text search',
+					},
+					{
+						displayName: 'Starting After',
+						name: 'startingAfter',
+						type: 'string',
+						default: '',
+						description: 'Cursor — return documents starting after this one (mutually exclusive with Ending Before)',
+					},
+					{
+						displayName: 'Status',
+						name: 'status',
+						type: 'options',
+						default: '',
+						description: 'Filter by lifecycle status',
+						options: [
+							{ name: 'Any', value: '' },
+							{ name: 'Awaiting Signatures', value: 'awaiting_signatures' },
+							{ name: 'Collecting Data', value: 'collecting_data' },
+							{ name: 'Completed', value: 'completed' },
+							{ name: 'Correcting', value: 'correcting' },
+							{ name: 'Draft', value: 'draft' },
+							{ name: 'Expired', value: 'expired' },
+							{ name: 'Processing', value: 'processing' },
+							{ name: 'Voided', value: 'voided' },
+						],
+					},
+				],
 			},
 		],
 	};
@@ -655,6 +832,224 @@ export class Allsign implements INodeType {
 					}
 
 					returnData.push({ json: getResponse });
+					continue;
+				}
+
+				if (operation === 'listDocuments') {
+					const limit = this.getNodeParameter('limit', i, 20) as number;
+					const filters = this.getNodeParameter('filters', i, {}) as IDataObject;
+
+					const qs: IDataObject = { limit };
+					const status = (filters.status as string) ?? '';
+					if (status) {
+						qs.status = status;
+					}
+					const scope = (filters.scope as string) ?? '';
+					if (scope) {
+						qs.scope = scope;
+					}
+					const search = (filters.search as string) ?? '';
+					if (search) {
+						qs.search = search;
+					}
+					const startingAfter = (filters.startingAfter as string) ?? '';
+					if (startingAfter) {
+						qs.startingAfter = startingAfter;
+					}
+					const endingBefore = (filters.endingBefore as string) ?? '';
+					if (endingBefore) {
+						qs.endingBefore = endingBefore;
+					}
+					const folderId = (filters.folderId as string) ?? '';
+					if (folderId) {
+						qs.folderId = folderId;
+					}
+					if ((filters.includeTotal as boolean) ?? false) {
+						qs.includeTotal = true;
+					}
+
+					// Read-only: no body, no Idempotency-Key (doesn't apply to GET).
+					const requestOptions: IHttpRequestOptions = {
+						method: 'GET',
+						url: `${baseUrl}/v3/documents`,
+						qs,
+						json: true,
+					};
+
+					let listResponse: IDataObject;
+					try {
+						listResponse = (await this.helpers.httpRequestWithAuthentication.call(
+							this,
+							'allSignApi',
+							requestOptions,
+						)) as IDataObject;
+					} catch (listError) {
+						throw new NodeApiError(this.getNode(), listError as JsonObject, {
+							message: 'Listing documents failed',
+							itemIndex: i,
+						});
+					}
+
+					returnData.push({ json: listResponse });
+					continue;
+				}
+
+				if (operation === 'listDocumentSigners') {
+					const documentId = (this.getNodeParameter('documentId', i) as string).trim();
+					if (!documentId) {
+						throw new NodeOperationError(this.getNode(), 'Document ID is required', {
+							itemIndex: i,
+						});
+					}
+
+					// Read-only: no body, no Idempotency-Key (doesn't apply to GET).
+					const requestOptions: IHttpRequestOptions = {
+						method: 'GET',
+						url: `${baseUrl}/v3/documents/${documentId}/signers`,
+						json: true,
+					};
+
+					let signersResponse: IDataObject;
+					try {
+						signersResponse = (await this.helpers.httpRequestWithAuthentication.call(
+							this,
+							'allSignApi',
+							requestOptions,
+						)) as IDataObject;
+					} catch (signersError) {
+						throw new NodeApiError(this.getNode(), signersError as JsonObject, {
+							message: 'Listing signers failed',
+							itemIndex: i,
+						});
+					}
+
+					returnData.push({ json: signersResponse });
+					continue;
+				}
+
+				if (operation === 'getDocumentEvidence') {
+					const documentId = (this.getNodeParameter('documentId', i) as string).trim();
+					if (!documentId) {
+						throw new NodeOperationError(this.getNode(), 'Document ID is required', {
+							itemIndex: i,
+						});
+					}
+
+					// Read-only: no body, no Idempotency-Key (doesn't apply to GET).
+					const requestOptions: IHttpRequestOptions = {
+						method: 'GET',
+						url: `${baseUrl}/v3/documents/${documentId}/evidence`,
+						json: true,
+					};
+
+					let evidenceResponse: IDataObject;
+					try {
+						evidenceResponse = (await this.helpers.httpRequestWithAuthentication.call(
+							this,
+							'allSignApi',
+							requestOptions,
+						)) as IDataObject;
+					} catch (evidenceError) {
+						throw new NodeApiError(this.getNode(), evidenceError as JsonObject, {
+							message: 'Retrieving evidence failed',
+							itemIndex: i,
+						});
+					}
+
+					returnData.push({ json: evidenceResponse });
+					continue;
+				}
+
+				if (operation === 'voidDocument') {
+					const documentId = (this.getNodeParameter('documentId', i) as string).trim();
+					if (!documentId) {
+						throw new NodeOperationError(this.getNode(), 'Document ID is required', {
+							itemIndex: i,
+						});
+					}
+
+					const reason = (this.getNodeParameter('reason', i, '') as string).trim();
+					// The API requires Idempotency-Key on every write (400
+					// IDEMPOTENCY_KEY_REQUIRED) — auto-generate a UUID v4 per item
+					// when the user didn't provide a stable key of their own.
+					const idempotencyKey =
+						(this.getNodeParameter('idempotencyKey', i, '') as string).trim() || randomUUID();
+
+					const body: Record<string, unknown> = {};
+					if (reason) {
+						body.reason = reason;
+					}
+
+					const requestOptions: IHttpRequestOptions = {
+						method: 'POST',
+						url: `${baseUrl}/v3/documents/${documentId}/void`,
+						body,
+						json: true,
+						headers: { 'Idempotency-Key': idempotencyKey },
+					};
+
+					let voidResponse: IDataObject;
+					try {
+						voidResponse = (await this.helpers.httpRequestWithAuthentication.call(
+							this,
+							'allSignApi',
+							requestOptions,
+						)) as IDataObject;
+					} catch (voidError) {
+						throw new NodeApiError(this.getNode(), voidError as JsonObject, {
+							message: 'Voiding document failed',
+							itemIndex: i,
+						});
+					}
+
+					returnData.push({ json: voidResponse });
+					continue;
+				}
+
+				if (operation === 'remindSigner') {
+					const documentId = (this.getNodeParameter('documentId', i) as string).trim();
+					if (!documentId) {
+						throw new NodeOperationError(this.getNode(), 'Document ID is required', {
+							itemIndex: i,
+						});
+					}
+
+					const signerId = (this.getNodeParameter('signerId', i) as string).trim();
+					if (!signerId) {
+						throw new NodeOperationError(this.getNode(), 'Signer ID is required', {
+							itemIndex: i,
+						});
+					}
+
+					// The API requires Idempotency-Key on every write (400
+					// IDEMPOTENCY_KEY_REQUIRED) — auto-generate a UUID v4 per item
+					// when the user didn't provide a stable key of their own.
+					const idempotencyKey =
+						(this.getNodeParameter('idempotencyKey', i, '') as string).trim() || randomUUID();
+
+					// The router has no body param for this endpoint — none is sent.
+					const requestOptions: IHttpRequestOptions = {
+						method: 'POST',
+						url: `${baseUrl}/v3/documents/${documentId}/signers/${signerId}/remind`,
+						json: true,
+						headers: { 'Idempotency-Key': idempotencyKey },
+					};
+
+					let remindResponse: IDataObject;
+					try {
+						remindResponse = (await this.helpers.httpRequestWithAuthentication.call(
+							this,
+							'allSignApi',
+							requestOptions,
+						)) as IDataObject;
+					} catch (remindError) {
+						throw new NodeApiError(this.getNode(), remindError as JsonObject, {
+							message: 'Reminding signer failed',
+							itemIndex: i,
+						});
+					}
+
+					returnData.push({ json: remindResponse });
 					continue;
 				}
 
