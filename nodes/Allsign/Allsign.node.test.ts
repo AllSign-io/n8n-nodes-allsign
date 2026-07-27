@@ -61,13 +61,22 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			expect(resourceProp).toBeUndefined();
 		});
 
-		it('should have an Operation selector with Create Document and Send Document', () => {
+		it('should have an Operation selector with Create Document, Send Document, and Get Document', () => {
 			const operationProp = node.description.properties.find((p) => p.name === 'operation');
 			expect(operationProp).toBeDefined();
 			expect((operationProp as NodeProp).type).toBe('options');
 			expect((operationProp as NodeProp).default).toBe('createDocument');
 			const values = (operationProp as NodeProp).options!.map((o: NodeProp) => o.value);
-			expect(values).toEqual(['createDocument', 'sendDocument']);
+			expect(values).toEqual(['createDocument', 'sendDocument', 'getDocument']);
+		});
+
+		it('should show Document ID for both Send Document and Get Document', () => {
+			const documentIdProp = node.description.properties.find((p) => p.name === 'documentId');
+			expect(documentIdProp).toBeDefined();
+			expect((documentIdProp as NodeProp).displayOptions.show.operation).toEqual([
+				'sendDocument',
+				'getDocument',
+			]);
 		});
 
 		it('should have a Source selector with File and Template options', () => {
@@ -883,6 +892,88 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			expect(body).not.toHaveProperty('source');
 			expect(body).not.toHaveProperty('signatureValidation');
 			expect(body).not.toHaveProperty('name');
+		});
+	});
+
+	// ----------------------------------------------------------
+	// Get Document — v3 GET /documents/{documentId}
+	// ----------------------------------------------------------
+	describe('Get Document', () => {
+		it('should GET /v3/documents/{documentId} with no body and no Idempotency-Key header', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({
+				id: 'doc_789',
+				object: 'document',
+				name: 'Contract',
+				status: 'completed',
+			});
+
+			const fn = getMockExecuteFunctions({
+				operation: 'getDocument',
+				documentId: 'doc_789',
+			});
+
+			const result = await node.execute.call(fn);
+
+			expect(mockHttpRequest).not.toHaveBeenCalled();
+			expect(mockHttpRequestWithAuthentication).toHaveBeenCalledTimes(1);
+
+			const call = mockHttpRequestWithAuthentication.mock.calls[0][1];
+			expect(call.method).toBe('GET');
+			expect(call.url).toBe('https://api.allsign.io/v3/documents/doc_789');
+			expect(call.body).toBeUndefined();
+			expect(call.headers).toBeUndefined();
+
+			expect(result[0][0].json).toEqual(
+				expect.objectContaining({ id: 'doc_789', name: 'Contract', status: 'completed' }),
+			);
+		});
+
+		it('should throw when Document ID is missing', async () => {
+			const fn = getMockExecuteFunctions({
+				operation: 'getDocument',
+				documentId: '',
+			});
+
+			await expect(node.execute.call(fn)).rejects.toThrow('Document ID is required');
+		});
+
+		it('should throw NodeApiError when the document is not found (404)', async () => {
+			mockHttpRequestWithAuthentication.mockRejectedValueOnce({
+				message: 'Request failed with status code 404',
+				response: { data: { message: 'Document not found' }, status: 404 },
+			});
+
+			const fn = getMockExecuteFunctions({
+				operation: 'getDocument',
+				documentId: 'doc_missing',
+			});
+
+			await expect(node.execute.call(fn)).rejects.toThrow();
+		});
+
+		it('should use httpRequestWithAuthentication with allSignApi credential', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ id: 'doc_auth_get' });
+
+			const fn = getMockExecuteFunctions({
+				operation: 'getDocument',
+				documentId: 'doc_auth_get',
+			});
+
+			await node.execute.call(fn);
+			expect(mockHttpRequestWithAuthentication.mock.calls[0][0]).toBe('allSignApi');
+		});
+
+		it('should continue on fail when enabled', async () => {
+			mockHttpRequestWithAuthentication.mockRejectedValueOnce(new Error('Connection refused'));
+
+			const fn = getMockExecuteFunctions({
+				operation: 'getDocument',
+				documentId: 'doc_fail',
+			});
+			(fn as unknown as Record<string, unknown>).continueOnFail = () => true;
+
+			const result = await node.execute.call(fn);
+			expect(result[0][0].json).toHaveProperty('error');
 		});
 	});
 

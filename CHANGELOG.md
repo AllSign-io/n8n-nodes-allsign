@@ -2,6 +2,12 @@
 
 All notable changes to `n8n-nodes-allsign` will be documented in this file.
 
+## [0.4.0] — 2026-07-23
+
+### ✨ Added
+
+- **Get Document operation** — new `Operation: Get Document` calls `GET /v3/documents/{documentId}` to retrieve a document by ID. Read-only: no request body, no `Idempotency-Key` header (doesn't apply to GET). The `Document ID` field is now shared between Send Document and Get Document.
+
 ## [0.3.1] — 2026-07-23
 
 ### 🐛 Fixed

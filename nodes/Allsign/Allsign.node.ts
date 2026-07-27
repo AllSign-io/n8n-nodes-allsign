@@ -17,9 +17,9 @@ export class Allsign implements INodeType {
 		icon: 'file:allsign.svg',
 		group: ['transform'],
 		version: 1,
-		subtitle: '={{$parameter["operation"] === "sendDocument" ? "Send Document" : "Create Document"}}',
+		subtitle: '={{$parameter["operation"] === "sendDocument" ? "Send Document" : $parameter["operation"] === "getDocument" ? "Get Document" : "Create Document"}}',
 		description:
-			'Create and send documents for e-signature with the AllSign API v3 — create with inline signers and signature validation, or send an already-created document to its signers. NOM-151, FEA, biometric verification.',
+			'Create and send documents for e-signature with the AllSign API v3 — create with inline signers and signature validation, send an already-created document to its signers, or retrieve a document by ID. NOM-151, FEA, biometric verification.',
 		defaults: {
 			name: 'AllSign',
 		},
@@ -66,6 +66,12 @@ export class Allsign implements INodeType {
 						value: 'sendDocument',
 						description: 'Send an existing document to its signers, optionally overriding recipients',
 						action: 'Send a document',
+					},
+					{
+						name: 'Get Document',
+						value: 'getDocument',
+						description: 'Retrieve a document by ID',
+						action: 'Get a document',
 					},
 				],
 			},
@@ -399,7 +405,7 @@ export class Allsign implements INodeType {
 			},
 
 			// ====================================================
-			// DOCUMENT (Send Document)
+			// DOCUMENT (Send Document / Get Document)
 			// ====================================================
 			{
 				displayName: 'Document ID',
@@ -408,10 +414,10 @@ export class Allsign implements INodeType {
 				default: '',
 				required: true,
 				placeholder: 'doc_...',
-				description: 'ID of the document to send — must already have signers attached (e.g. from Create Document)',
+				description: 'ID of the document (doc_...) — e.g. the ID returned by Create Document',
 				displayOptions: {
 					show: {
-						operation: ['sendDocument'],
+						operation: ['sendDocument', 'getDocument'],
 					},
 				},
 			},
@@ -616,6 +622,39 @@ export class Allsign implements INodeType {
 					}
 
 					returnData.push({ json: sendResponse });
+					continue;
+				}
+
+				if (operation === 'getDocument') {
+					const documentId = (this.getNodeParameter('documentId', i) as string).trim();
+					if (!documentId) {
+						throw new NodeOperationError(this.getNode(), 'Document ID is required', {
+							itemIndex: i,
+						});
+					}
+
+					// Read-only: no body, no Idempotency-Key (doesn't apply to GET).
+					const requestOptions: IHttpRequestOptions = {
+						method: 'GET',
+						url: `${baseUrl}/v3/documents/${documentId}`,
+						json: true,
+					};
+
+					let getResponse: IDataObject;
+					try {
+						getResponse = (await this.helpers.httpRequestWithAuthentication.call(
+							this,
+							'allSignApi',
+							requestOptions,
+						)) as IDataObject;
+					} catch (getError) {
+						throw new NodeApiError(this.getNode(), getError as JsonObject, {
+							message: 'Document retrieval failed',
+							itemIndex: i,
+						});
+					}
+
+					returnData.push({ json: getResponse });
 					continue;
 				}
 

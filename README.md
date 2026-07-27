@@ -6,10 +6,11 @@
 
 [n8n](https://n8n.io) integration for the **[AllSign](https://allsign.io)** e-signature platform.
 
-Create and send documents for electronic signature directly from your n8n workflows using the **AllSign API v3**. The node has two operations:
+Create and send documents for electronic signature directly from your n8n workflows using the **AllSign API v3**. The node has three operations:
 
 - **Create Document** — a single `POST /v3/documents` call with inline signers and signature validation (no separate add-signer/invite steps).
 - **Send Document** — `POST /v3/documents/{documentId}/send`, to (re)send the invitation for a document that already exists, optionally overriding who receives it.
+- **Get Document** — `GET /v3/documents/{documentId}`, to retrieve a document by ID.
 
 ---
 
@@ -66,6 +67,14 @@ Send (or resend) the signing invitation for a document that already exists.
 
 > **Idempotency Key is always sent, even if you leave it empty.** The AllSign API requires an `Idempotency-Key` header on every Create/Send request. If you don't set one, the node auto-generates a random UUID v4 per item — set your own only if you need a *stable* key across manual retries.
 
+### 📄 Operation: Get Document
+
+Retrieve a document by ID — read-only, no body, no `Idempotency-Key` (doesn't apply to GET).
+
+| Field | Description |
+|:---|:---|
+| **Document ID** | The `doc_...` of the document to retrieve (required) |
+
 ---
 
 ## 🚀 Getting Started
@@ -91,6 +100,11 @@ Send (or resend) the signing invitation for a document that already exists.
 2. Set the **Document ID** (e.g. from a previous Create Document node's output)
 3. Optionally add Recipients to override who gets invited
 4. Execute!
+
+**To retrieve a document:**
+1. Add the **AllSign** node, set **Operation** to **Get Document**
+2. Set the **Document ID**
+3. Execute!
 
 The signing invitation channel (email or WhatsApp) is auto-detected per signer/recipient based on the contact information provided.
 
