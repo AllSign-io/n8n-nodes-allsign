@@ -56,16 +56,23 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			expect(node.description.displayName).toBe('AllSign');
 		});
 
-		it('should NOT have a resource property (single-resource node: Document)', () => {
+		it('should have a Resource selector with a single Document option (Resource + Operation pattern)', () => {
 			const resourceProp = node.description.properties.find((p) => p.name === 'resource');
-			expect(resourceProp).toBeUndefined();
+			expect(resourceProp).toBeDefined();
+			expect((resourceProp as NodeProp).type).toBe('options');
+			expect((resourceProp as NodeProp).default).toBe('document');
+			const values = (resourceProp as NodeProp).options!.map((o: NodeProp) => o.value);
+			expect(values).toEqual(['document']);
+			// Resource must be the very first property (n8n convention)
+			expect(node.description.properties[0].name).toBe('resource');
 		});
 
-		it('should have an Operation selector with all 8 operations', () => {
+		it('should have an Operation selector with all 8 operations, shown only for Resource = Document', () => {
 			const operationProp = node.description.properties.find((p) => p.name === 'operation');
 			expect(operationProp).toBeDefined();
 			expect((operationProp as NodeProp).type).toBe('options');
 			expect((operationProp as NodeProp).default).toBe('createDocument');
+			expect((operationProp as NodeProp).displayOptions.show.resource).toEqual(['document']);
 			const values = (operationProp as NodeProp).options!.map((o: NodeProp) => o.value);
 			expect(values).toEqual([
 				'createDocument',
@@ -79,9 +86,10 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			]);
 		});
 
-		it('should show Document ID for every operation that needs it', () => {
+		it('should show Document ID for every operation that needs it, gated on Resource = Document too', () => {
 			const documentIdProp = node.description.properties.find((p) => p.name === 'documentId');
 			expect(documentIdProp).toBeDefined();
+			expect((documentIdProp as NodeProp).displayOptions.show.resource).toEqual(['document']);
 			expect((documentIdProp as NodeProp).displayOptions.show.operation).toEqual([
 				'sendDocument',
 				'getDocument',
@@ -92,14 +100,42 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			]);
 		});
 
-		it('should share Idempotency Key across the three write operations (Send/Void/Remind)', () => {
+		it('should share Idempotency Key across the three write operations (Send/Void/Remind), gated on Resource = Document too', () => {
 			const idempotencyKeyProp = node.description.properties.find((p) => p.name === 'idempotencyKey');
 			expect(idempotencyKeyProp).toBeDefined();
+			expect((idempotencyKeyProp as NodeProp).displayOptions.show.resource).toEqual(['document']);
 			expect((idempotencyKeyProp as NodeProp).displayOptions.show.operation).toEqual([
 				'sendDocument',
 				'voidDocument',
 				'remindSigner',
 			]);
+		});
+
+		it('should gate every top-level operation-specific field on Resource = Document as well', () => {
+			const gatedFieldNames = [
+				'documentName',
+				'source',
+				'fileSource',
+				'binaryProperty',
+				'fileUrl',
+				'templateId',
+				'templateValues',
+				'signers',
+				'signatureValidations',
+				'configuration',
+				'documentId',
+				'recipients',
+				'idempotencyKey',
+				'reason',
+				'signerId',
+				'limit',
+				'filters',
+			];
+			for (const name of gatedFieldNames) {
+				const prop = node.description.properties.find((p) => p.name === name);
+				expect(prop).toBeDefined();
+				expect((prop as NodeProp).displayOptions?.show?.resource).toEqual(['document']);
+			}
 		});
 
 		it('should have a Source selector with File and Template options', () => {

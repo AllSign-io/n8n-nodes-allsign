@@ -2,7 +2,11 @@
 
 All notable changes to `n8n-nodes-allsign` will be documented in this file.
 
-## [0.5.0] — 2026-07-23
+## [0.6.0] — 2026-07-23
+
+### 🔄 Changed
+
+- **Restructure to n8n Resource + Operation pattern (Document resource)** — added a `Resource` selector (`Document`, the only value) as the node's first field, with `Operation` and all 17 operation-specific fields now also gated on `resource: ['document']` in addition to their existing `operation` conditions. This is a pure UI/organization change — `execute()` still routes purely on `operation`, and every request body/query/header produced is unchanged. Resolves the n8n lint warning `@n8n/community-nodes/resource-operation-pattern` ("8 operations without resources"), which is now fully clear (0 errors, 0 warnings).
 
 ### ✨ Added
 

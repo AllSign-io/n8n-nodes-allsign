@@ -6,7 +6,7 @@
 
 [n8n](https://n8n.io) integration for the **[AllSign](https://allsign.io)** e-signature platform.
 
-Create, send, and manage documents for electronic signature directly from your n8n workflows using the **AllSign API v3**. The node has eight operations:
+Create, send, and manage documents for electronic signature directly from your n8n workflows using the **AllSign API v3**. The node follows n8n's Resource + Operation pattern: a single Resource, **Document**, with eight operations:
 
 - **Create Document** — a single `POST /v3/documents` call with inline signers and signature validation (no separate add-signer/invite steps).
 - **Send Document** — `POST /v3/documents/{documentId}/send`, to (re)send the invitation for a document that already exists, optionally overriding who receives it.
@@ -141,6 +141,8 @@ Manually resend the signing invitation to one signer who hasn't completed yet. R
 4. Click **Save** — the connection test validates your key automatically
 
 ### 2. Use the Node
+
+**Resource** is always **Document** — the node only manages documents today, so this field just needs to be left at its default. **Operation** picks what to do with it.
 
 **To create a document:**
 1. Add the **AllSign** node to your workflow, leave **Operation** as **Create Document**

@@ -47,6 +47,23 @@ export class Allsign implements INodeType {
 		},
 		properties: [
 			// ====================================================
+			// RESOURCE
+			// ====================================================
+			{
+				displayName: 'Resource',
+				name: 'resource',
+				type: 'options',
+				noDataExpression: true,
+				default: 'document',
+				options: [
+					{
+						name: 'Document',
+						value: 'document',
+					},
+				],
+			},
+
+			// ====================================================
 			// OPERATION
 			// ====================================================
 			{
@@ -55,6 +72,11 @@ export class Allsign implements INodeType {
 				type: 'options',
 				noDataExpression: true,
 				default: 'createDocument',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+					},
+				},
 				options: [
 					{
 						name: 'Create Document',
@@ -122,6 +144,7 @@ export class Allsign implements INodeType {
 				description: 'Name for the new document',
 				displayOptions: {
 					show: {
+						resource: ['document'],
 						operation: ['createDocument'],
 					},
 				},
@@ -136,6 +159,7 @@ export class Allsign implements INodeType {
 				description: 'Where the document content comes from — an inline file or an existing AllSign template',
 				displayOptions: {
 					show: {
+						resource: ['document'],
 						operation: ['createDocument'],
 					},
 				},
@@ -161,6 +185,7 @@ export class Allsign implements INodeType {
 				default: 'binary',
 				displayOptions: {
 					show: {
+						resource: ['document'],
 						operation: ['createDocument'],
 						source: ['file'],
 					},
@@ -186,6 +211,7 @@ export class Allsign implements INodeType {
 				description: 'Name of the binary property containing the file',
 				displayOptions: {
 					show: {
+						resource: ['document'],
 						operation: ['createDocument'],
 						source: ['file'],
 						fileSource: ['binary'],
@@ -201,6 +227,7 @@ export class Allsign implements INodeType {
 				description: 'URL of the file. Supports direct links, Google Drive, and Dropbox — auto-converted to download URLs. For Google Drive, the file must be shared as "Anyone with the link". For private files, use Binary Input with the Google Drive node.',
 				displayOptions: {
 					show: {
+						resource: ['document'],
 						operation: ['createDocument'],
 						source: ['file'],
 						fileSource: ['url'],
@@ -219,6 +246,7 @@ export class Allsign implements INodeType {
 				description: 'ID of an existing AllSign template',
 				displayOptions: {
 					show: {
+						resource: ['document'],
 						operation: ['createDocument'],
 						source: ['template'],
 					},
@@ -233,6 +261,7 @@ export class Allsign implements INodeType {
 				description: 'Key-value pairs to fill in the template variables. Keys are the template\'s natural variable names (never camelCased).',
 				displayOptions: {
 					show: {
+						resource: ['document'],
 						operation: ['createDocument'],
 						source: ['template'],
 					},
@@ -255,6 +284,7 @@ export class Allsign implements INodeType {
 				description: 'People who need to sign the document. Each signer receives their invitation via their chosen delivery method — email or WhatsApp.',
 				displayOptions: {
 					show: {
+						resource: ['document'],
 						operation: ['createDocument'],
 					},
 				},
@@ -344,6 +374,7 @@ export class Allsign implements INodeType {
 					'Signature types and verification methods for legal validity and security',
 				displayOptions: {
 					show: {
+						resource: ['document'],
 						operation: ['createDocument'],
 					},
 				},
@@ -411,6 +442,7 @@ export class Allsign implements INodeType {
 				description: 'Controls expiration and request idempotency',
 				displayOptions: {
 					show: {
+						resource: ['document'],
 						operation: ['createDocument'],
 					},
 				},
@@ -448,6 +480,7 @@ export class Allsign implements INodeType {
 				description: 'ID of the document (doc_...) — e.g. the ID returned by Create Document',
 				displayOptions: {
 					show: {
+						resource: ['document'],
 						operation: [
 							'sendDocument',
 							'getDocument',
@@ -475,6 +508,7 @@ export class Allsign implements INodeType {
 				description: 'Optional — overrides who receives the invitation. Leave empty to send to the signers already attached to the document.',
 				displayOptions: {
 					show: {
+						resource: ['document'],
 						operation: ['sendDocument'],
 					},
 				},
@@ -554,6 +588,7 @@ export class Allsign implements INodeType {
 				description: 'Optional — set your own key to safely retry this request without duplicating the effect (a second invitation, void, or reminder). If left empty, a random UUID v4 is auto-generated per execution (the API requires this header on every write).',
 				displayOptions: {
 					show: {
+						resource: ['document'],
 						operation: ['sendDocument', 'voidDocument', 'remindSigner'],
 					},
 				},
@@ -571,6 +606,7 @@ export class Allsign implements INodeType {
 				description: 'Optional — why the document is being voided. Kept in the document audit log.',
 				displayOptions: {
 					show: {
+						resource: ['document'],
 						operation: ['voidDocument'],
 					},
 				},
@@ -589,6 +625,7 @@ export class Allsign implements INodeType {
 				description: 'ID of the signer to remind (sgr_...) — get it from List Signers',
 				displayOptions: {
 					show: {
+						resource: ['document'],
 						operation: ['remindSigner'],
 					},
 				},
@@ -611,6 +648,7 @@ export class Allsign implements INodeType {
 				description: 'Max number of documents to return (1-100, default 20 to match the API)',
 				displayOptions: {
 					show: {
+						resource: ['document'],
 						operation: ['listDocuments'],
 					},
 				},
@@ -624,6 +662,7 @@ export class Allsign implements INodeType {
 				description: 'Optional filters and pagination cursors for the list',
 				displayOptions: {
 					show: {
+						resource: ['document'],
 						operation: ['listDocuments'],
 					},
 				},
