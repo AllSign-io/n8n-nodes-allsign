@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type {
 	IDataObject,
 	IExecuteFunctions,
@@ -9,6 +9,51 @@ import type {
 	JsonObject,
 } from 'n8n-workflow';
 import { NodeConnectionTypes, NodeApiError, NodeOperationError } from 'n8n-workflow';
+
+/**
+ * Idempotency-Key determinista para una operación de escritura.
+ *
+ * Por qué NO `randomUUID()`: n8n reintenta un nodo por su cuenta cuando el POST
+ * hace timeout o devuelve 5xx. Con una llave nueva en cada intento, la API ve
+ * dos peticiones distintas y crea DOS documentos — y cobra dos veces. El
+ * síntoma es el mismo del cliente que canceló: falla en silencio y se ve bien.
+ *
+ * La llave se deriva de (executionId, itemIndex, operación, documentId) para que:
+ *   - el mismo item reintentado reuse su llave  → la API replaya, no duplica;
+ *   - dos operaciones del mismo item no colisionen → un `void` no se replaya
+ *     como si fuera el `send` anterior devolviendo su respuesta.
+ *
+ * La forma importa: `app/api/v3/idempotency.py` valida contra
+ *   ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$
+ * o sea UUID v4 ESTRICTO — el `4` y el `[89ab]` no son decorativos. Por eso no
+ * basta concatenar los campos: se hashean y se fuerzan esos dos nibbles.
+ *
+ * Si no hay executionId (pruebas manuales, algunos contextos de n8n), se cae a
+ * `randomUUID()`: preferimos una llave aleatoria a una constante que provoque
+ * replays entre ejecuciones distintas.
+ */
+function stableIdempotencyKey(
+	executionId: string,
+	itemIndex: number,
+	operation: string,
+	documentId = '',
+): string {
+	if (!executionId) return randomUUID();
+
+	const h = createHash('sha256')
+		.update(`${executionId}:${itemIndex}:${operation}:${documentId}`)
+		.digest('hex');
+
+	// Nibble 12 fijo en '4' (versión) y nibble 16 en 8|9|a|b (variante RFC 4122).
+	const variant = '89ab'[parseInt(h[16], 16) % 4];
+	return [
+		h.slice(0, 8),
+		h.slice(8, 12),
+		`4${h.slice(13, 16)}`,
+		`${variant}${h.slice(17, 20)}`,
+		h.slice(20, 32),
+	].join('-');
+}
 
 export class Allsign implements INodeType {
 	description: INodeTypeDescription = {
@@ -804,10 +849,13 @@ export class Allsign implements INodeType {
 					});
 
 					// The API requires Idempotency-Key on every write (400
-					// IDEMPOTENCY_KEY_REQUIRED) — auto-generate a UUID v4 per item
-					// when the user didn't provide a stable key of their own.
+
+					// La llave por defecto es DETERMINISTA, no aleatoria: n8n reintenta solo
+					// cuando el POST hace timeout, y con `randomUUID()` cada intento creaba otro
+					// documento y volvía a cobrar. Ver `stableIdempotencyKey`.
 					const idempotencyKey =
-						(this.getNodeParameter('idempotencyKey', i, '') as string).trim() || randomUUID();
+					(this.getNodeParameter('idempotencyKey', i, '') as string).trim() ||
+					stableIdempotencyKey(this.getExecutionId(), i, 'sendDocument', documentId);
 
 					const body: Record<string, unknown> = {};
 					if (recipients.length > 0) {
@@ -1009,10 +1057,13 @@ export class Allsign implements INodeType {
 
 					const reason = (this.getNodeParameter('reason', i, '') as string).trim();
 					// The API requires Idempotency-Key on every write (400
-					// IDEMPOTENCY_KEY_REQUIRED) — auto-generate a UUID v4 per item
-					// when the user didn't provide a stable key of their own.
+
+					// La llave por defecto es DETERMINISTA, no aleatoria: n8n reintenta solo
+					// cuando el POST hace timeout, y con `randomUUID()` cada intento creaba otro
+					// documento y volvía a cobrar. Ver `stableIdempotencyKey`.
 					const idempotencyKey =
-						(this.getNodeParameter('idempotencyKey', i, '') as string).trim() || randomUUID();
+					(this.getNodeParameter('idempotencyKey', i, '') as string).trim() ||
+					stableIdempotencyKey(this.getExecutionId(), i, 'voidDocument', documentId);
 
 					const body: Record<string, unknown> = {};
 					if (reason) {
@@ -1061,10 +1112,13 @@ export class Allsign implements INodeType {
 					}
 
 					// The API requires Idempotency-Key on every write (400
-					// IDEMPOTENCY_KEY_REQUIRED) — auto-generate a UUID v4 per item
-					// when the user didn't provide a stable key of their own.
+
+					// La llave por defecto es DETERMINISTA, no aleatoria: n8n reintenta solo
+					// cuando el POST hace timeout, y con `randomUUID()` cada intento creaba otro
+					// documento y volvía a cobrar. Ver `stableIdempotencyKey`.
 					const idempotencyKey =
-						(this.getNodeParameter('idempotencyKey', i, '') as string).trim() || randomUUID();
+					(this.getNodeParameter('idempotencyKey', i, '') as string).trim() ||
+					stableIdempotencyKey(this.getExecutionId(), i, 'remindSigner', documentId);
 
 					// The router has no body param for this endpoint — none is sent.
 					const requestOptions: IHttpRequestOptions = {
@@ -1109,7 +1163,11 @@ export class Allsign implements INodeType {
 				// The API requires Idempotency-Key on every write (400
 				// IDEMPOTENCY_KEY_REQUIRED) — auto-generate a UUID v4 per item
 				// when the user didn't provide a stable key of their own.
-				const idempotencyKey = ((configSettings.idempotencyKey as string) ?? '').trim() || randomUUID();
+				// Determinista por (ejecución, item): un retry de n8n reusa la llave y la
+				// API replaya en vez de crear un segundo documento. Ver `stableIdempotencyKey`.
+				const idempotencyKey =
+					((configSettings.idempotencyKey as string) ?? '').trim() ||
+					stableIdempotencyKey(this.getExecutionId(), i, 'createDocument');
 
 				// Signature Validations (from collapsible collection) — v3's curated 6-flag subset
 				const sigValidations = this.getNodeParameter('signatureValidations', i, {}) as IDataObject;

@@ -35,6 +35,10 @@ const getMockExecuteFunctions = (params: Record<string, unknown>): IExecuteFunct
 		} as unknown as IExecuteFunctions['helpers'],
 		continueOnFail: () => false,
 		getNode: () => ({ name: 'AllSign' }),
+		// `stableIdempotencyKey` lo usa para derivar una llave determinista por
+		// (ejecución, item, operación). Fijo en los tests para que la llave sea
+		// reproducible y se pueda afirmar sobre ella.
+		getExecutionId: () => 'exec_test_1',
 	} as unknown as IExecuteFunctions;
 };
 
@@ -1510,4 +1514,70 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			expect(result[0][0].json).toHaveProperty('error');
 		});
 	});
+	// ─────────────────────────────────────────────────────────────────────────
+	// Idempotency-Key determinista
+	//
+	// n8n reintenta un nodo por su cuenta cuando el POST hace timeout o
+	// devuelve 5xx. Con `randomUUID()` cada intento mandaba una llave nueva, la
+	// API veía dos peticiones distintas, y creaba DOS documentos cobrando dos
+	// veces. Estos tests son el guard de eso.
+	// ─────────────────────────────────────────────────────────────────────────
+	describe('Idempotency-Key determinista', () => {
+		const keyOf = (call: number) =>
+			mockHttpRequestWithAuthentication.mock.calls[call][1].headers['Idempotency-Key'] as string;
+
+		const sendOnce = async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ id: 'doc_123' });
+			const fn = getMockExecuteFunctions({
+				operation: 'sendDocument',
+				documentId: 'doc_123',
+				'recipients.recipientValues': [{ deliveryMethod: 'email', email: 'a@b.mx' }],
+			});
+			await node.execute.call(fn);
+		};
+
+		it('el mismo item reintentado reusa la MISMA llave — la API replaya en vez de duplicar', async () => {
+			await sendOnce();
+			const primera = keyOf(0);
+			mockHttpRequestWithAuthentication.mockClear();
+			await sendOnce();
+			expect(keyOf(0)).toBe(primera);
+		});
+
+		it('operaciones distintas del mismo item NO colisionan', async () => {
+			await sendOnce();
+			const llaveSend = keyOf(0);
+			mockHttpRequestWithAuthentication.mockClear();
+
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ id: 'doc_123' });
+			await node.execute.call(
+				getMockExecuteFunctions({ operation: 'voidDocument', documentId: 'doc_123' }),
+			);
+			// Si colisionaran, el void se replayaría como si fuera el send y
+			// devolvería la respuesta del send — silenciosamente, sin anular nada.
+			expect(keyOf(0)).not.toBe(llaveSend);
+		});
+
+		it('la llave cumple el UUID v4 ESTRICTO que valida la API', async () => {
+			// app/api/v3/idempotency.py rechaza con IDEMPOTENCY_KEY_INVALID
+			// cualquier cosa fuera de este patrón — el `4` y el `[89ab]` incluidos.
+			await sendOnce();
+			expect(keyOf(0)).toMatch(
+				/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+			);
+		});
+
+		it('una llave puesta por el usuario sigue ganando', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ id: 'doc_123' });
+			const fn = getMockExecuteFunctions({
+				operation: 'sendDocument',
+				documentId: 'doc_123',
+				idempotencyKey: 'mi-llave-estable',
+				'recipients.recipientValues': [{ deliveryMethod: 'email', email: 'a@b.mx' }],
+			});
+			await node.execute.call(fn);
+			expect(keyOf(0)).toBe('mi-llave-estable');
+		});
+	});
+
 });
