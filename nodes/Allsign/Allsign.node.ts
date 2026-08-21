@@ -55,6 +55,42 @@ function stableIdempotencyKey(
 	].join('-');
 }
 
+/**
+ * Nombre de archivo derivado de una URL de descarga.
+ *
+ * El código tomaba el último segmento de la URL COMPLETA, así que la query
+ * string se colaba en el nombre y rompía la inferencia del tipo:
+ *
+ *   Dropbox    …/nda.docx?dl=1          -> "nda.docx?dl=1"  -> no acaba en .docx -> pdf
+ *   S3 firmado …/contrato.docx?X-Amz-…  -> idem
+ *   Drive      …/uc?export=download&id= -> "uc?export=download&id=…" como nombre
+ *
+ * Un .docx declarado como pdf llega mal al backend. Se corta query y hash antes
+ * de leer el último segmento, y si lo que queda no tiene extensión —el caso de
+ * Drive, cuyo path es sólo `/uc`— se cae a un nombre por defecto en vez de
+ * mandar basura.
+ */
+function fileNameFromUrl(rawUrl: string, fallback = 'document.pdf'): string {
+	let pathOnly = rawUrl;
+	try {
+		pathOnly = new URL(rawUrl).pathname;
+	} catch {
+		// URL relativa o malformada: corta a mano en el primer ? o #
+		pathOnly = rawUrl.split('#')[0].split('?')[0];
+	}
+
+	const last = pathOnly.split('/').filter(Boolean).pop() ?? '';
+	let name: string;
+	try {
+		name = decodeURIComponent(last);
+	} catch {
+		name = last; // %-encoding inválido: úsalo tal cual antes que tronar
+	}
+
+	// Sin extensión no hay tipo que inferir — mejor el default que "uc".
+	return /\.[a-z0-9]{2,5}$/i.test(name) ? name : fallback;
+}
+
 export class Allsign implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'AllSign',
@@ -923,7 +959,19 @@ export class Allsign implements INodeType {
 				}
 
 				if (operation === 'listDocuments') {
-					const limit = this.getNodeParameter('limit', i, 20) as number;
+					// El UI acota 1..100, pero una EXPRESIÓN (`={{ 500 }}`, `={{ 0 }}`) se
+					// evalúa fuera de esa restricción y llegaba tal cual. La API responde
+					// 422 VALIDATION_ERROR con `field: limit / OUT_OF_RANGE`; se falla aquí
+					// para que el error apunte al parámetro y no a un 422 opaco.
+					const limitRaw = this.getNodeParameter('limit', i, 20) as number;
+					const limit = Number(limitRaw);
+					if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+						throw new NodeOperationError(
+							this.getNode(),
+							`Limit must be a whole number between 1 and 100 (got ${limitRaw}).`,
+							{ itemIndex: i },
+						);
+					}
 					const filters = this.getNodeParameter('filters', i, {}) as IDataObject;
 
 					const qs: IDataObject = { limit };
@@ -946,6 +994,16 @@ export class Allsign implements INodeType {
 					const endingBefore = (filters.endingBefore as string) ?? '';
 					if (endingBefore) {
 						qs.endingBefore = endingBefore;
+					}
+					// El copy del campo dice que son excluyentes y el router los rechaza
+					// juntos (422, `field: endingBefore / INVALID_VALUE`). Mandarlos y dejar
+					// que la API decida convierte un error de configuración en uno de red.
+					if (startingAfter && endingBefore) {
+						throw new NodeOperationError(
+							this.getNode(),
+							'Starting After and Ending Before are mutually exclusive — set only one.',
+							{ itemIndex: i },
+						);
 					}
 					const folderId = (filters.folderId as string) ?? '';
 					if (folderId) {
@@ -1233,18 +1291,32 @@ export class Allsign implements INodeType {
 					}
 					body.templateId = templateId;
 
-					const templateValuesRaw = this.getNodeParameter('templateValues', i, '{}') as string;
-					try {
-						const parsed = JSON.parse(templateValuesRaw);
-						if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
-							body.templateValues = parsed;
+					// El campo es `type: 'json'` de n8n, y n8n NO garantiza que llegue como
+					// string: una expresión como `={{ { nombre: $json.name } }}` entrega el
+					// objeto ya evaluado. `JSON.parse` sobre un objeto lo coacciona a
+					// "[object Object]" y truena con «Invalid JSON» — un error que apunta al
+					// usuario cuando el input era válido.
+					const templateValuesRaw = this.getNodeParameter('templateValues', i, '{}') as
+						| string
+						| Record<string, unknown>;
+
+					let parsed: unknown;
+					if (typeof templateValuesRaw === 'string') {
+						try {
+							parsed = JSON.parse(templateValuesRaw || '{}');
+						} catch (parseError) {
+							throw new NodeOperationError(
+								this.getNode(),
+								`Invalid JSON in Template Values: ${(parseError as Error).message}`,
+								{ itemIndex: i },
+							);
 						}
-					} catch (parseError) {
-						throw new NodeOperationError(
-							this.getNode(),
-							`Invalid JSON in Template Values: ${(parseError as Error).message}`,
-							{ itemIndex: i },
-						);
+					} else {
+						parsed = templateValuesRaw;
+					}
+
+					if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+						body.templateValues = parsed;
 					}
 				} else {
 					const fileSource = this.getNodeParameter('fileSource', i) as string;
@@ -1272,8 +1344,7 @@ export class Allsign implements INodeType {
 							}) as Buffer,
 						);
 						fileBase64 = Buffer.from(fileBuffer).toString('base64');
-						const urlParts = fileUrl.split('/');
-						fileName = decodeURIComponent(urlParts[urlParts.length - 1] || 'document.pdf');
+						fileName = fileNameFromUrl(fileUrl);
 					} else {
 						const binaryProperty = this.getNodeParameter('binaryProperty', i) as string;
 						const binaryData = this.helpers.assertBinaryData(i, binaryProperty);

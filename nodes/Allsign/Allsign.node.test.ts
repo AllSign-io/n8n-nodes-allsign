@@ -1580,4 +1580,86 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 		});
 	});
 
+	// ─────────────────────────────────────────────────────────────────────────
+	// Hallazgos del review: nombre/tipo desde URL, templateValues y paginación
+	// ─────────────────────────────────────────────────────────────────────────
+	describe('Nombre y tipo de archivo desde URL', () => {
+		const createFromUrl = async (url: string) => {
+			mockHttpRequest.mockResolvedValueOnce(Buffer.from('%PDF-1.4'));
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ id: 'doc_1' });
+			const fn = getMockExecuteFunctions({
+				operation: 'createDocument',
+				source: 'file',
+				fileSource: 'url',
+				fileUrl: url,
+				documentName: 'X',
+				'signers.signerValues': [],
+			});
+			await node.execute.call(fn);
+			return mockHttpRequestWithAuthentication.mock.calls[0][1].body.file as {
+				name: string;
+				fileType: string;
+			};
+		};
+
+		it('Dropbox: ?dl=1 no debe colarse en el nombre ni volver pdf a un .docx', async () => {
+			const file = await createFromUrl('https://www.dropbox.com/s/abc/nda.docx?dl=1');
+			expect(file.name).toBe('nda.docx');
+			expect(file.fileType).toBe('docx');
+		});
+
+		it('S3 firmado: la firma X-Amz-… tampoco', async () => {
+			const file = await createFromUrl(
+				'https://b.s3.amazonaws.com/contrato.docx?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=900',
+			);
+			expect(file.name).toBe('contrato.docx');
+			expect(file.fileType).toBe('docx');
+		});
+
+		it('Drive: el path es sólo /uc, así que cae al nombre por defecto y no a "uc?export=…"', async () => {
+			const file = await createFromUrl('https://drive.google.com/uc?export=download&id=XYZ');
+			expect(file.name).toBe('document.pdf');
+			expect(file.name).not.toContain('?');
+		});
+	});
+
+	describe('Template Values', () => {
+		it('acepta el objeto que entrega una expresión de n8n, sin tronar con Invalid JSON', async () => {
+			// `={{ { nombre: $json.name } }}` llega ya evaluado como objeto.
+			// JSON.parse lo coaccionaba a "[object Object]".
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ id: 'doc_1' });
+			const fn = getMockExecuteFunctions({
+				operation: 'createDocument',
+				source: 'template',
+				templateId: 'tpl_1',
+				templateValues: { nombre_completo: 'Ana' },
+				documentName: 'X',
+				'signers.signerValues': [],
+			});
+			await node.execute.call(fn);
+			expect(mockHttpRequestWithAuthentication.mock.calls[0][1].body.templateValues).toEqual({
+				nombre_completo: 'Ana',
+			});
+		});
+	});
+
+	describe('List Documents — límites que el UI no puede imponer', () => {
+		const listWith = (params: Record<string, unknown>) =>
+			node.execute.call(
+				getMockExecuteFunctions({ operation: 'listDocuments', limit: 20, filters: {}, ...params }),
+			);
+
+		it.each([500, 0, 2.5])('rechaza limit=%s antes de salir a la red', async (limit) => {
+			await expect(listWith({ limit })).rejects.toThrow(/between 1 and 100/i);
+			expect(mockHttpRequestWithAuthentication).not.toHaveBeenCalled();
+		});
+
+		it('rechaza startingAfter y endingBefore juntos', async () => {
+			await expect(
+				listWith({ filters: { startingAfter: 'doc_a', endingBefore: 'doc_b' } }),
+			).rejects.toThrow(/mutually exclusive/i);
+			expect(mockHttpRequestWithAuthentication).not.toHaveBeenCalled();
+		});
+	});
+
 });
