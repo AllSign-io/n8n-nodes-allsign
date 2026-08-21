@@ -890,8 +890,8 @@ export class Allsign implements INodeType {
 					// cuando el POST hace timeout, y con `randomUUID()` cada intento creaba otro
 					// documento y volvía a cobrar. Ver `stableIdempotencyKey`.
 					const idempotencyKey =
-					(this.getNodeParameter('idempotencyKey', i, '') as string).trim() ||
-					stableIdempotencyKey(this.getExecutionId(), i, 'sendDocument', documentId);
+						(this.getNodeParameter('idempotencyKey', i, '') as string).trim() ||
+						stableIdempotencyKey(this.getExecutionId(), i, 'sendDocument', documentId);
 
 					const body: Record<string, unknown> = {};
 					if (recipients.length > 0) {
@@ -1120,8 +1120,8 @@ export class Allsign implements INodeType {
 					// cuando el POST hace timeout, y con `randomUUID()` cada intento creaba otro
 					// documento y volvía a cobrar. Ver `stableIdempotencyKey`.
 					const idempotencyKey =
-					(this.getNodeParameter('idempotencyKey', i, '') as string).trim() ||
-					stableIdempotencyKey(this.getExecutionId(), i, 'voidDocument', documentId);
+						(this.getNodeParameter('idempotencyKey', i, '') as string).trim() ||
+						stableIdempotencyKey(this.getExecutionId(), i, 'voidDocument', documentId);
 
 					const body: Record<string, unknown> = {};
 					if (reason) {
@@ -1175,8 +1175,8 @@ export class Allsign implements INodeType {
 					// cuando el POST hace timeout, y con `randomUUID()` cada intento creaba otro
 					// documento y volvía a cobrar. Ver `stableIdempotencyKey`.
 					const idempotencyKey =
-					(this.getNodeParameter('idempotencyKey', i, '') as string).trim() ||
-					stableIdempotencyKey(this.getExecutionId(), i, 'remindSigner', documentId);
+						(this.getNodeParameter('idempotencyKey', i, '') as string).trim() ||
+						stableIdempotencyKey(this.getExecutionId(), i, 'remindSigner', documentId);
 
 					// The router has no body param for this endpoint — none is sent.
 					const requestOptions: IHttpRequestOptions = {
@@ -1218,9 +1218,6 @@ export class Allsign implements INodeType {
 				// Configuration (from collapsible collection)
 				const configSettings = this.getNodeParameter('configuration', i, {}) as IDataObject;
 				const expiresAt = (configSettings.expiresAt as string) ?? '';
-				// The API requires Idempotency-Key on every write (400
-				// IDEMPOTENCY_KEY_REQUIRED) — auto-generate a UUID v4 per item
-				// when the user didn't provide a stable key of their own.
 				// Determinista por (ejecución, item): un retry de n8n reusa la llave y la
 				// API replaya en vez de crear un segundo documento. Ver `stableIdempotencyKey`.
 				const idempotencyKey =
