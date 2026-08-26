@@ -56,6 +56,33 @@ function stableIdempotencyKey(
 }
 
 /**
+ * El porqué del error, sacado del cuerpo problem+json de la API.
+ *
+ * n8n solo enseña `message` y `description`. Sin esto el usuario ve
+ * "Document send failed" y nada mas: el `detail` que explica que paso, el
+ * `code` estable y sobre todo el `requestId` —lo que soporte necesita para
+ * rastrear la llamada— se quedan en el cuerpo de la respuesta, invisibles.
+ */
+function apiErrorDescription(error: unknown): string | undefined {
+	const response = (error as { response?: { body?: unknown; data?: unknown } })?.response;
+	const body = response?.body ?? response?.data ?? (error as { body?: unknown })?.body;
+	if (!body || typeof body !== 'object') return undefined;
+
+	const { detail, code, requestId } = body as {
+		detail?: unknown;
+		code?: unknown;
+		requestId?: unknown;
+	};
+
+	const parts: string[] = [];
+	if (typeof detail === 'string' && detail) parts.push(detail);
+	if (typeof code === 'string' && code) parts.push(`code: ${code}`);
+	if (typeof requestId === 'string' && requestId) parts.push(`requestId: ${requestId}`);
+
+	return parts.length > 0 ? parts.join(' - ') : undefined;
+}
+
+/**
  * Nombre de archivo derivado de una URL de descarga.
  *
  * El código tomaba el último segmento de la URL COMPLETA, así que la query
@@ -917,6 +944,7 @@ export class Allsign implements INodeType {
 					} catch (sendError) {
 						throw new NodeApiError(this.getNode(), sendError as JsonObject, {
 							message: 'Document send failed',
+														description: apiErrorDescription(sendError),
 							itemIndex: i,
 						});
 					}
@@ -950,6 +978,7 @@ export class Allsign implements INodeType {
 					} catch (getError) {
 						throw new NodeApiError(this.getNode(), getError as JsonObject, {
 							message: 'Document retrieval failed',
+														description: apiErrorDescription(getError),
 							itemIndex: i,
 						});
 					}
@@ -1031,6 +1060,7 @@ export class Allsign implements INodeType {
 					} catch (listError) {
 						throw new NodeApiError(this.getNode(), listError as JsonObject, {
 							message: 'Listing documents failed',
+														description: apiErrorDescription(listError),
 							itemIndex: i,
 						});
 					}
@@ -1064,6 +1094,7 @@ export class Allsign implements INodeType {
 					} catch (signersError) {
 						throw new NodeApiError(this.getNode(), signersError as JsonObject, {
 							message: 'Listing signers failed',
+														description: apiErrorDescription(signersError),
 							itemIndex: i,
 						});
 					}
@@ -1097,6 +1128,7 @@ export class Allsign implements INodeType {
 					} catch (evidenceError) {
 						throw new NodeApiError(this.getNode(), evidenceError as JsonObject, {
 							message: 'Retrieving evidence failed',
+														description: apiErrorDescription(evidenceError),
 							itemIndex: i,
 						});
 					}
@@ -1146,6 +1178,7 @@ export class Allsign implements INodeType {
 					} catch (voidError) {
 						throw new NodeApiError(this.getNode(), voidError as JsonObject, {
 							message: 'Voiding document failed',
+														description: apiErrorDescription(voidError),
 							itemIndex: i,
 						});
 					}
@@ -1196,6 +1229,7 @@ export class Allsign implements INodeType {
 					} catch (remindError) {
 						throw new NodeApiError(this.getNode(), remindError as JsonObject, {
 							message: 'Reminding signer failed',
+														description: apiErrorDescription(remindError),
 							itemIndex: i,
 						});
 					}
@@ -1388,6 +1422,7 @@ export class Allsign implements INodeType {
 				} catch (createError) {
 					throw new NodeApiError(this.getNode(), createError as JsonObject, {
 						message: 'Document creation failed',
+												description: apiErrorDescription(createError),
 						itemIndex: i,
 					});
 				}
@@ -1409,6 +1444,7 @@ export class Allsign implements INodeType {
 				}
 
 				throw new NodeApiError(this.getNode(), error as JsonObject, {
+										description: apiErrorDescription(error),
 					itemIndex: i,
 				});
 			}
