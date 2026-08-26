@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## 📋 NDA Automation with AllSign (API v3)\n\nThis workflow automates the entire NDA signing process:\n\n1. **A form** collects signer details and contract terms\n2. **Variables are mapped** to fill the AllSign template\n3. **AllSign creates the document** from an existing Template (`source: \"template\"`) with the form values as `templateValues`, and sends the signing invitation to the inline signer automatically\n\n> **Time saved:** What used to take 15+ minutes of manual work now runs in seconds.",
+        "content": "## 📋 NDA Automation with AllSign (API v3)\n\nThis workflow automates the entire NDA signing process:\n\n1. **A form** collects signer details and contract terms\n2. **Variables are mapped** to fill the AllSign template\n3. **AllSign creates the document** from an existing Template (`source: \"template\"`) with the form values as `templateValues`\n4. **AllSign sends it for signature** — Create leaves the document in `draft`; the Send Document node is what dispatches the invitation to the signer\n\n> **Time saved:** What used to take 15+ minutes of manual work now runs in seconds.",
         "height": 360,
         "width": 380,
         "color": 5
@@ -42,7 +42,7 @@
     },
     {
       "parameters": {
-        "content": "## 💡 Tips\n\n- **Template Values** like `nombre_completo` are matched to the template's variables and auto-replaced with form values\n- **WhatsApp** is optional — the signer's Delivery Method switches to WhatsApp only when a number is provided, otherwise it falls back to email\n- **Role Name** (`cliente`) auto-assigns any template variables tagged with that role to this signer\n- **Signature Validations** can be customized in the AllSign node — v3's curated set: Autógrafa, NOM-151, FEA, Biometric Selfie, ID Scan, Video Signature",
+        "content": "## 💡 Tips\n\n- **Template Values** like `client_name` must match the variable names declared in the template — the ones in `NDA_Template_AllSign.docx` are `client_name`, `company_name`, `effective_date`, `project_description`, `confidentiality_period` and `governing_law`. A name that doesn't match is silently left unfilled\n- **WhatsApp** is optional — the signer's Delivery Method switches to WhatsApp only when a number is provided, otherwise it falls back to email\n- **Role Name** (`cliente`) auto-assigns any template variables tagged with that role to this signer\n- **Signature Validations** can be customized in the AllSign node — v3's curated set: Autógrafa, NOM-151, FEA, Biometric Selfie, ID Scan, Video Signature",
         "height": 240,
         "width": 380,
         "color": 3
@@ -206,7 +206,7 @@
             {
               "id": "set-template-values",
               "name": "templateValuesJson",
-              "value": "={{ JSON.stringify({ nombre_completo: $json['Client Full Name'], nombre_empresa: $json['Company Name (Disclosing Party)'], fecha_efectiva: $json['Effective Date'], descripcion_proyecto: $json['Project Description'], periodo_confidencialidad: $json['Confidentiality Period'], ley_aplicable: $json['Governing Law / Jurisdiction'] }) }}",
+              "value": "={{ JSON.stringify({ client_name: $json['Client Full Name'], company_name: $json['Company Name (Disclosing Party)'], effective_date: $json['Effective Date'], project_description: $json['Project Description'], confidentiality_period: $json['Confidentiality Period'], governing_law: $json['Governing Law / Jurisdiction'] }) }}",
               "type": "string"
             }
           ]
@@ -220,6 +220,8 @@
     },
     {
       "parameters": {
+        "resource": "document",
+        "operation": "createDocument",
         "documentName": "={{ $('Map Form to Template Variables').item.json.documentName }}",
         "source": "template",
         "templateId": "={{ $('Map Form to Template Variables').item.json.templateId }}",
@@ -240,10 +242,28 @@
         }
       },
       "id": "allsign-create",
-      "name": "AllSign: Create & Send NDA",
+      "name": "AllSign: Create NDA",
       "type": "n8n-nodes-allsign.allsign",
       "typeVersion": 1,
       "position": [740, 300],
+      "credentials": {
+        "allSignApi": {
+          "id": "",
+          "name": "AllSign API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "document",
+        "operation": "sendDocument",
+        "documentId": "={{ $json.id }}"
+      },
+      "id": "allsign-send",
+      "name": "AllSign: Send NDA for Signature",
+      "type": "n8n-nodes-allsign.allsign",
+      "typeVersion": 1,
+      "position": [1000, 300],
       "credentials": {
         "allSignApi": {
           "id": "",
@@ -268,7 +288,18 @@
       "main": [
         [
           {
-            "node": "AllSign: Create & Send NDA",
+            "node": "AllSign: Create NDA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AllSign: Create NDA": {
+      "main": [
+        [
+          {
+            "node": "AllSign: Send NDA for Signature",
             "type": "main",
             "index": 0
           }
