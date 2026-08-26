@@ -1722,6 +1722,34 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			expect(err.description).toContain('req_zzz');
 		});
 
+		it('también cuando el cuerpo llega sin parsear, como string', async () => {
+			// La API responde `application/problem+json`, no `application/json`.
+			// Si el parser no reconoce ese content-type, el cuerpo llega crudo.
+			const err = await createWith({
+				message: 'Request failed with status code 409',
+				response: {
+					status: 409,
+					body: JSON.stringify({
+						detail: 'Document already signed',
+						code: 'DOCUMENT_ALREADY_SIGNED',
+						requestId: 'req_str1',
+					}),
+				},
+			});
+
+			expect(err.description).toContain('Document already signed');
+			expect(err.description).toContain('req_str1');
+		});
+
+		it('un string que no es JSON no se enseña crudo', async () => {
+			const err = await createWith({
+				message: 'Request failed with status code 502',
+				response: { status: 502, body: '<html>Bad Gateway</html>' },
+			});
+
+			expect(err.description).not.toContain('<html>');
+		});
+
 		it('un error sin cuerpo problem+json no inventa un detail', async () => {
 			// Sin cuerpo, n8n rellena el description con el mensaje del error.
 			// Lo que NO debe pasar es que aparezca un code o un requestId falsos.

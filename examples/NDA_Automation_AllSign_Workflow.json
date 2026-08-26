@@ -4,7 +4,7 @@
     {
       "parameters": {
         "content": "## 📋 NDA Automation with AllSign (API v3)\n\nThis workflow automates the entire NDA signing process:\n\n1. **A form** collects signer details and contract terms\n2. **Variables are mapped** to fill the AllSign template\n3. **AllSign creates the document** from an existing Template (`source: \"template\"`) with the form values as `templateValues`\n4. **AllSign sends it for signature** — Create leaves the document in `draft`; the Send Document node is what dispatches the invitation to the signer\n\n> **Time saved:** What used to take 15+ minutes of manual work now runs in seconds.",
-        "height": 360,
+        "height": 440,
         "width": 380,
         "color": 5
       },
@@ -43,7 +43,7 @@
     {
       "parameters": {
         "content": "## 💡 Tips\n\n- **Template Values** like `client_name` must match the variable names declared in the template — the ones in `NDA_Template_AllSign.docx` are `client_name`, `company_name`, `effective_date`, `project_description`, `confidentiality_period` and `governing_law`. A name that doesn't match is silently left unfilled\n- **WhatsApp** is optional — the signer's Delivery Method switches to WhatsApp only when a number is provided, otherwise it falls back to email\n- **Role Name** (`cliente`) auto-assigns any template variables tagged with that role to this signer\n- **Signature Validations** can be customized in the AllSign node — v3's curated set: Autógrafa, NOM-151, FEA, Biometric Selfie, ID Scan, Video Signature",
-        "height": 240,
+        "height": 360,
         "width": 380,
         "color": 3
       },

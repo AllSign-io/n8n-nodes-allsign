@@ -59,13 +59,27 @@ function stableIdempotencyKey(
  * El porqué del error, sacado del cuerpo problem+json de la API.
  *
  * n8n solo enseña `message` y `description`. Sin esto el usuario ve
- * "Document send failed" y nada mas: el `detail` que explica que paso, el
+ * "Document send failed" y nada más: el `detail` que explica qué pasó, el
  * `code` estable y sobre todo el `requestId` —lo que soporte necesita para
  * rastrear la llamada— se quedan en el cuerpo de la respuesta, invisibles.
+ *
+ * El cuerpo puede llegar como string: la API responde
+ * `application/problem+json`, no `application/json`, y no todo parser
+ * reconoce ese content-type. Si no se parsea, se devuelve undefined en vez
+ * de enseñar el JSON crudo.
  */
 function apiErrorDescription(error: unknown): string | undefined {
 	const response = (error as { response?: { body?: unknown; data?: unknown } })?.response;
-	const body = response?.body ?? response?.data ?? (error as { body?: unknown })?.body;
+	const raw = response?.body ?? response?.data ?? (error as { body?: unknown })?.body;
+
+	let body = raw;
+	if (typeof raw === 'string') {
+		try {
+			body = JSON.parse(raw);
+		} catch {
+			return undefined;
+		}
+	}
 	if (!body || typeof body !== 'object') return undefined;
 
 	const { detail, code, requestId } = body as {
