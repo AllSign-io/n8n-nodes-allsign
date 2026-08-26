@@ -1,5 +1,6 @@
 import type { IExecuteFunctions } from 'n8n-workflow';
 import { Allsign } from './Allsign.node';
+import exampleWorkflow from '../../examples/NDA_Automation_AllSign_Workflow.json';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type NodeProp = Record<string, any>;
@@ -1659,6 +1660,130 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 				listWith({ filters: { startingAfter: 'doc_a', endingBefore: 'doc_b' } }),
 			).rejects.toThrow(/mutually exclusive/i);
 			expect(mockHttpRequestWithAuthentication).not.toHaveBeenCalled();
+		});
+	});
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// El error de la API tiene que llegar al usuario
+	//
+	// La API responde problem+json: `detail` explica qué pasó, `code` es
+	// estable y `requestId` es lo que soporte necesita para rastrear la
+	// llamada. n8n sólo enseña `message` y `description`, así que sin pasarlo
+	// al `description` el usuario veía "Document creation failed" y nada más.
+	// ─────────────────────────────────────────────────────────────────────────
+	describe('El detail de problem+json llega al usuario', () => {
+		const createWith = async (rejection: unknown) => {
+			mockHttpRequest.mockResolvedValueOnce(Buffer.from('pdf'));
+			mockHttpRequestWithAuthentication.mockRejectedValueOnce(rejection);
+			const fn = getMockExecuteFunctions({
+				documentName: 'Doc',
+				source: 'file',
+				fileSource: 'url',
+				fileUrl: 'https://example.com/doc.pdf',
+				'signers.signerValues': [{ name: 'T', deliveryMethod: 'email', email: 't@t.com' }],
+				signatureValidations: {},
+			});
+			try {
+				await node.execute.call(fn);
+			} catch (err) {
+				return err as { message?: string; description?: string };
+			}
+			throw new Error('se esperaba que tronara');
+		};
+
+		it('el detail, el code y el requestId salen en el description', async () => {
+			const err = await createWith({
+				message: 'Request failed with status code 402',
+				response: {
+					status: 402,
+					body: {
+						detail: 'Your plan ran out of credits.',
+						code: 'INSUFFICIENT_CREDITS',
+						requestId: 'req_abc123',
+					},
+				},
+			});
+
+			expect(err.description).toContain('Your plan ran out of credits.');
+			expect(err.description).toContain('INSUFFICIENT_CREDITS');
+			expect(err.description).toContain('req_abc123');
+		});
+
+		it('también cuando el cuerpo viene en response.data', async () => {
+			const err = await createWith({
+				message: 'Request failed with status code 422',
+				response: {
+					status: 422,
+					data: { detail: 'templateId is required', requestId: 'req_zzz' },
+				},
+			});
+
+			expect(err.description).toContain('templateId is required');
+			expect(err.description).toContain('req_zzz');
+		});
+
+		it('un error sin cuerpo problem+json no inventa un detail', async () => {
+			// Sin cuerpo, n8n rellena el description con el mensaje del error.
+			// Lo que NO debe pasar es que aparezca un code o un requestId falsos.
+			const err = await createWith(new Error('socket hang up'));
+			expect(err.description).not.toContain('code:');
+			expect(err.description).not.toContain('requestId:');
+		});
+	});
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// El workflow de ejemplo tiene que funcionar de verdad
+	//
+	// Shippeó prometiendo en el sticky que manda la invitación de firma, pero
+	// no tenía nodo de Send: dejaba un draft que nadie firmaba nunca. Y las
+	// variables que armaba no eran las que declara la plantilla, así que el
+	// NDA salía con todos los campos vacíos. Nada de eso lo atrapa un test del
+	// nodo: hay que mirar el ejemplo mismo.
+	// ─────────────────────────────────────────────────────────────────────────
+	describe('El workflow de ejemplo (examples/)', () => {
+		const workflow = exampleWorkflow as unknown as {
+			nodes: Array<NodeProp>;
+			connections: Record<string, { main: Array<Array<{ node: string }>> }>;
+		};
+
+		const allsignNodes = workflow.nodes.filter((n) => n.type === 'n8n-nodes-allsign.allsign');
+
+		// Los que declara `examples/NDA_Template_AllSign.docx`, que produce
+		// `examples/generate_nda_template.py`. Si cambia la plantilla, cambia
+		// esta lista — y este test es el que avisa que el workflow quedó atrás.
+		const VARIABLES_DE_LA_PLANTILLA = [
+			'client_name',
+			'company_name',
+			'confidentiality_period',
+			'effective_date',
+			'governing_law',
+			'project_description',
+		];
+
+		it('manda el documento a firmar, no lo deja en draft', () => {
+			const ops = allsignNodes.map((n) => n.parameters.operation);
+			expect(ops).toContain('createDocument');
+			expect(ops).toContain('sendDocument');
+		});
+
+		it('el Send corre después del Create y usa el id que el Create devuelve', () => {
+			const create = allsignNodes.find((n) => n.parameters.operation === 'createDocument')!;
+			const send = allsignNodes.find((n) => n.parameters.operation === 'sendDocument')!;
+
+			const downstream = workflow.connections[create.name].main[0].map((c) => c.node);
+			expect(downstream).toContain(send.name);
+			expect(send.parameters.documentId).toContain('$json.id');
+		});
+
+		it('las variables que arma son EXACTAMENTE las que declara la plantilla', () => {
+			const mapNode = workflow.nodes.find((n) => n.name === 'Map Form to Template Variables')!;
+			const expression = mapNode.parameters.assignments.assignments.find(
+				(a: NodeProp) => a.name === 'templateValuesJson',
+			).value as string;
+
+			const built = [...expression.matchAll(/([a-z0-9_]+):\s*\$json\[/g)].map((m) => m[1]);
+
+			expect(built.sort()).toEqual([...VARIABLES_DE_LA_PLANTILLA].sort());
 		});
 	});
 
