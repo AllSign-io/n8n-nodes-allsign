@@ -6,60 +6,128 @@
 
 [n8n](https://n8n.io) integration for the **[AllSign](https://allsign.io)** e-signature platform.
 
-Create and send documents for electronic signature directly from your n8n workflows using the AllSign API V2.
+Create, send, and manage documents for electronic signature directly from your n8n workflows using the **AllSign API v3**. The node follows n8n's Resource + Operation pattern: a single Resource, **Document**, with eight operations:
+
+- **Create Document** — a single `POST /v3/documents` call with inline signers and signature validation (no separate add-signer/invite steps).
+- **Send Document** — `POST /v3/documents/{documentId}/send`, to (re)send the invitation for a document that already exists, optionally overriding who receives it.
+- **Get Document** — `GET /v3/documents/{documentId}`, to retrieve a document by ID.
+- **List Documents** — `GET /v3/documents`, with optional filters and pagination.
+- **List Signers** — `GET /v3/documents/{documentId}/signers`, to list a document's signers.
+- **Get Evidence** — `GET /v3/documents/{documentId}/evidence`, to retrieve the signed PDF + NOM-151 constancia (presigned URLs).
+- **Void Document** — `POST /v3/documents/{documentId}/void`, to annul a document (not a delete — NOM-151 retention keeps the record).
+- **Remind Signer** — `POST /v3/documents/{documentId}/signers/{signerId}/remind`, to manually resend the invitation to one signer.
 
 ---
 
 ## ✨ Features
 
-### 📄 Document — Create & Send
+### 📄 Operation: Create Document
 
-Upload a PDF or DOCX (from URL or binary input) and send it for signing in one step, with full control over signature requirements.
+Create a document from an inline **File** (PDF/DOCX, URL or binary input) or from an existing AllSign **Template** (by ID + variable values) — signers and signature validation travel inline in the same request.
 
 ### 📱 Signers: Email & WhatsApp
 
-Signers can be reached via **email**, **WhatsApp**, or **both**. When both channels are provided, the signer verifies their identity through OTP on both channels as part of the signing process.
+Signers can be reached via **email** or **WhatsApp**. Each signer can also carry an optional **Role Name**, used to auto-assign template variables marked with that role.
 
 - ✅ Email-only signers
 - ✅ WhatsApp-only signers (phone number, no email required)
-- ✅ Both channels — dual OTP verification during signing
+- ✅ Optional Role Name per signer
 
-### 🔐 10 Signature Validations
+### 🔐 6 Signature Validations
 
-| Validation                 | Description                                                          |
-| -------------------------- | -------------------------------------------------------------------- |
-| **Autógrafa**              | Handwritten digital signature with biometric capture (on by default) |
-| **FEA**                    | Advanced Electronic Signature — Mexico standard                      |
-| **eIDAS**                  | European Electronic Signature — eIDAS compliance                     |
-| **NOM-151**                | NOM-151-SCFI certified timestamping (Mexico)                         |
-| **Video Signature**        | Recorded video of the signer during the signing process              |
-| **Biometric Selfie**       | Face comparison against the signer's government ID                   |
-| **SynthID (AI Detection)** | Verifies selfie is from a real person, not AI-generated              |
-| **ID Scan**                | Government-issued ID scan (INE, passport, etc.)                      |
-| **Identity Verification**  | AI-powered ID + selfie verification pipeline                         |
-| **Confirm Name**           | Signer must type their full name as confirmation                     |
+| Validation           | Description                                                          |
+| --------------------- | --------------------------------------------------------------------- |
+| **Autógrafa**         | Handwritten digital signature (on by default)                         |
+| **NOM-151**           | NOM-151-SCFI certified conservation timestamping (Mexico)              |
+| **FEA**               | Advanced Electronic Signature — Mexico standard                       |
+| **Biometric Selfie**  | Face comparison against the signer's government ID (anti-deepfake)    |
+| **ID Scan**           | Government-issued ID scan (INE, passport, etc.)                       |
+| **Video Signature**   | Recorded video of the signer during the signing process               |
 
-### 📥 File Input
+### 📥 File Input (Source: File)
 
 - **Binary Input** — Use a file from a previous node (e.g. Google Drive, HTTP Request, Dropbox)
 - **URL** — Provide a public URL to a PDF or DOCX file (Google Drive and Dropbox links are auto-converted)
 
-### 📐 Signature Field Placement
+### 📑 Template Input (Source: Template)
 
-Place signature fields precisely on the document:
-
-- **By coordinates** — X, Y position on a specific page (or all pages)
-- **By anchor text** — Search for text in the PDF and place the field there
+Reference an existing AllSign template by **Template ID** and fill in its variables via **Template Values** (JSON, natural variable-name keys).
 
 ### ⚙️ Additional Options
 
-| Option                       | Description                                                         |
-| ---------------------------- | ------------------------------------------------------------------- |
-| **Folder**                   | Organize documents into folders (by name or ID)                     |
-| **Expires At**               | Set an expiration deadline — document auto-expires after this date  |
-| **Template Variables (DOCX)**| Replace `{{ variables }}` in DOCX templates with dynamic values     |
-| **Permissions**              | Set document owner, collaborators, and public read access           |
-| **Send Invitations**         | Auto-send or hold for manual sharing                                |
+| Option             | Description                                                            |
+| ------------------- | ------------------------------------------------------------------------ |
+| **Expires At**     | Set an expiration deadline — document auto-expires after this date       |
+| **Idempotency Key**| Safely retry the create request without creating a duplicate document    |
+
+### 📤 Operation: Send Document
+
+Send (or resend) the signing invitation for a document that already exists.
+
+| Field | Description |
+|:---|:---|
+| **Document ID** | The `doc_...` of the document to send (required) |
+| **Recipients** (optional) | Overrides who receives the invitation — same Delivery Method (Email/WhatsApp) shape as Signers. Leave empty to send to the signers already attached to the document |
+| **Idempotency Key** (optional) | Safely retry the send request without dispatching duplicate invitations |
+
+> **Idempotency Key is always sent, even if you leave it empty.** The AllSign API requires an `Idempotency-Key` header on every Create/Send request. If you don't set one, the node auto-generates a random UUID v4 per item — set your own only if you need a *stable* key across manual retries.
+
+### 📄 Operation: Get Document
+
+Retrieve a document by ID — read-only, no body, no `Idempotency-Key` (doesn't apply to GET).
+
+| Field | Description |
+|:---|:---|
+| **Document ID** | The `doc_...` of the document to retrieve (required) |
+
+### 📋 Operation: List Documents
+
+List documents — read-only, no body, no `Idempotency-Key`.
+
+| Field | Description |
+|:---|:---|
+| **Limit** | Max documents to return (1-100, default 20) |
+| **Filters** (optional collection) | **Status** (lifecycle), **Scope** (Owner/Organization/Tenant/Accessible), **Search** (free text), **Starting After** / **Ending Before** (pagination cursors), **Folder ID**, **Include Total** |
+
+Only the filters you actually set are sent to the API — everything else is omitted so the API applies its own defaults (e.g. `scope=owner`).
+
+### 👥 Operation: List Signers
+
+List a document's signers — read-only, no body, no `Idempotency-Key`.
+
+| Field | Description |
+|:---|:---|
+| **Document ID** | The `doc_...` whose signers you want to list (required) |
+
+### 🧾 Operation: Get Evidence
+
+Get a document's evidence bundle — read-only, no body, no `Idempotency-Key`.
+
+| Field | Description |
+|:---|:---|
+| **Document ID** | The `doc_...` of the document (required) |
+
+Returns presigned URLs for the fully-signed PDF and the NOM-151 conservation constancia. `available` is `false` until every signer has completed — poll until it flips to `true`.
+
+### 🚫 Operation: Void Document
+
+Void (annul) a document. Not a delete — NOM-151 retention keeps the voided record for audit purposes.
+
+| Field | Description |
+|:---|:---|
+| **Document ID** | The `doc_...` to void (required) |
+| **Reason** (optional) | Why the document is being voided — kept in the audit log; omitted from the request if left empty |
+| **Idempotency Key** (optional) | Safely retry without double-voiding |
+
+### 🔔 Operation: Remind Signer
+
+Manually resend the signing invitation to one signer who hasn't completed yet. Rate-limited by the API (once every 4 hours per signer).
+
+| Field | Description |
+|:---|:---|
+| **Document ID** | The `doc_...` the signer belongs to (required) |
+| **Signer ID** | The `sgr_...` to remind — get it from List Signers (required) |
+| **Idempotency Key** (optional) | Safely retry without sending a duplicate reminder |
 
 ---
 
@@ -74,13 +142,27 @@ Place signature fields precisely on the document:
 
 ### 2. Use the Node
 
-1. Add the **AllSign** node to your workflow
-2. Set the document name and file source (URL or Binary)
+**Resource** is always **Document** — the node only manages documents today, so this field just needs to be left at its default. **Operation** picks what to do with it.
+
+**To create a document:**
+1. Add the **AllSign** node to your workflow, leave **Operation** as **Create Document**
+2. Set the document name and Source (File — URL or Binary — or an existing Template)
 3. Add signers (name + email and/or WhatsApp number)
 4. Toggle the signature validations you need
 5. Execute!
 
-The signing invitation channel (email or WhatsApp) is auto-detected per signer based on the contact information provided.
+**To send an existing document:**
+1. Add the **AllSign** node, set **Operation** to **Send Document**
+2. Set the **Document ID** (e.g. from a previous Create Document node's output)
+3. Optionally add Recipients to override who gets invited
+4. Execute!
+
+**To retrieve, list, void, or remind:**
+1. Add the **AllSign** node, set **Operation** to **Get Document**, **List Documents**, **List Signers**, **Get Evidence**, **Void Document**, or **Remind Signer**
+2. Fill in the required ID(s) — **Document ID** (all except List Documents) and, for Remind Signer, the **Signer ID**
+3. Execute!
+
+The signing invitation channel (email or WhatsApp) is auto-detected per signer/recipient based on the contact information provided.
 
 ---
 
@@ -103,7 +185,7 @@ npm install
 | `npm run dev`         | Start n8n with hot reload    |
 | `npm run build`       | Compile TypeScript → `dist/` |
 | `npm run build:watch` | Compile in watch mode        |
-| `npm test`            | Run unit tests (39 tests)    |
+| `npm test`            | Run unit tests               |
 | `npm run lint`        | Check code style             |
 
 ### Project Structure
@@ -114,9 +196,9 @@ n8n-nodes-allsign/
 │   └── AllSignApi.credentials.ts        # API Key + Base URL credential
 ├── nodes/
 │   └── Allsign/
-│       ├── Allsign.node.ts              # Main node (Create & Send)
+│       ├── Allsign.node.ts              # Main node (8 operations, v3)
 │       ├── Allsign.node.json            # Codex metadata & SEO
-│       ├── Allsign.node.test.ts         # Unit tests (39 tests)
+│       ├── Allsign.node.test.ts         # Unit tests
 │       └── allsign.svg                  # Node icon
 ├── examples/
 │   ├── NDA_Automation_AllSign_Workflow.json  # Example workflow

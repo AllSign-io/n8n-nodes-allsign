@@ -3,8 +3,8 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## 📋 NDA Automation with AllSign\n\nThis workflow automates the entire NDA signing process:\n\n1. **A form** collects signer details and contract terms\n2. **Variables are mapped** to fill the DOCX template\n3. **The template is downloaded** from a public URL\n4. **AllSign creates the document** and sends signing invitations automatically\n\n> **Time saved:** What used to take 15+ minutes of manual work now runs in seconds.",
-        "height": 340,
+        "content": "## 📋 NDA Automation with AllSign (API v3)\n\nThis workflow automates the entire NDA signing process:\n\n1. **A form** collects signer details and contract terms\n2. **Variables are mapped** to fill the AllSign template\n3. **AllSign creates the document** from an existing Template (`source: \"template\"`) with the form values as `templateValues`\n4. **AllSign sends it for signature** — Create leaves the document in `draft`; the Send Document node is what dispatches the invitation to the signer\n\n> **Time saved:** What used to take 15+ minutes of manual work now runs in seconds.",
+        "height": 440,
         "width": 380,
         "color": 5
       },
@@ -16,9 +16,9 @@
     },
     {
       "parameters": {
-        "content": "## 🔗 Template URL Setup\n\n**⚠️ Replace the URL** in the HTTP Request node with your hosted DOCX template.\n\nOptions to host:\n- GitHub Release asset\n- S3 / CloudFront bucket\n- Any public file server\n\nYou can also use an **n8n variable** (`$vars.nda_template_url`) to keep the URL configurable.",
-        "height": 280,
-        "width": 300,
+        "content": "## 🔗 AllSign Template Setup\n\n**⚠️ Create the template in AllSign first** — upload `NDA_Template_AllSign.docx` (in this same `examples/` folder) via the AllSign dashboard's Templates section, then copy its **Template ID** (`tmpl_...`).\n\nSet it in the **Map Form to Template Variables** node, either directly or via an n8n variable (`$vars.allsign_nda_template_id`).\n\nv3's `source: \"template\"` references that existing template by ID — it no longer accepts an inline DOCX + variable substitution, so there's no download/upload step in this workflow anymore.",
+        "height": 300,
+        "width": 320,
         "color": 6
       },
       "id": "sticky-template-url",
@@ -38,12 +38,12 @@
       "name": "Sticky Note2",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [960, -60]
+      "position": [1000, -60]
     },
     {
       "parameters": {
-        "content": "## 💡 Tips\n\n- **Template variables** like `{{ client_name }}` in the DOCX are auto-replaced with form values\n- **WhatsApp** is optional — leave blank to send by email only\n- **Signature validations** can be customized in the AllSign node (FEA, NOM-151, eIDAS, biometric, etc.)",
-        "height": 220,
+        "content": "## 💡 Tips\n\n- **Template Values** like `client_name` must match the variable names declared in the template — the ones in `NDA_Template_AllSign.docx` are `client_name`, `company_name`, `effective_date`, `project_description`, `confidentiality_period` and `governing_law`. A name that doesn't match is silently left unfilled\n- **WhatsApp** is optional — the signer's Delivery Method switches to WhatsApp only when a number is provided, otherwise it falls back to email\n- **Role Name** (`cliente`) auto-assigns any template variables tagged with that role to this signer\n- **Signature Validations** can be customized in the AllSign node — v3's curated set: Autógrafa, NOM-151, FEA, Biometric Selfie, ID Scan, Video Signature",
+        "height": 360,
         "width": 380,
         "color": 3
       },
@@ -51,7 +51,7 @@
       "name": "Sticky Note3",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [180, 520]
+      "position": [180, 540]
     },
     {
       "parameters": {
@@ -127,7 +127,7 @@
         },
         "options": {
           "respondToWebhook": true,
-          "formSubmittedText": "✅ Your NDA has been created and sent for signature!\n\nThe signer will receive an invitation via email (and WhatsApp if provided) to review and sign the NDA electronically."
+          "formSubmittedText": "✅ Your NDA has been created and sent for signature!\n\nThe signer will receive an invitation via email (or WhatsApp, if provided) to review and sign the NDA electronically."
         }
       },
       "id": "form-trigger",
@@ -147,6 +147,12 @@
               "id": "set-doc-name",
               "name": "documentName",
               "value": "=NDA - {{ $json['Client Full Name'] }} - {{ $json['Company Name (Disclosing Party)'] }}",
+              "type": "string"
+            },
+            {
+              "id": "set-template-id",
+              "name": "templateId",
+              "value": "={{ $vars.allsign_nda_template_id || 'tmpl_REPLACE_ME' }}",
               "type": "string"
             },
             {
@@ -198,8 +204,8 @@
               "type": "string"
             },
             {
-              "id": "set-template-vars",
-              "name": "templateVariablesJson",
+              "id": "set-template-values",
+              "name": "templateValuesJson",
               "value": "={{ JSON.stringify({ client_name: $json['Client Full Name'], company_name: $json['Company Name (Disclosing Party)'], effective_date: $json['Effective Date'], project_description: $json['Project Description'], confidentiality_period: $json['Confidentiality Period'], governing_law: $json['Governing Law / Jurisdiction'] }) }}",
               "type": "string"
             }
@@ -214,45 +220,47 @@
     },
     {
       "parameters": {
-        "url": "={{ $vars.nda_template_url || 'https://raw.githubusercontent.com/AllSign-io/n8n-nodes-allsign/main/examples/NDA_Template_AllSign.docx' }}",
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "file"
-            }
-          }
-        }
-      },
-      "id": "download-template",
-      "name": "Download NDA Template (DOCX)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [740, 300]
-    },
-    {
-      "parameters": {
+        "resource": "document",
+        "operation": "createDocument",
         "documentName": "={{ $('Map Form to Template Variables').item.json.documentName }}",
-        "fileSource": "binary",
-        "binaryProperty": "data",
+        "source": "template",
+        "templateId": "={{ $('Map Form to Template Variables').item.json.templateId }}",
+        "templateValues": "={{ $('Map Form to Template Variables').item.json.templateValuesJson }}",
         "signers": {
           "signerValues": [
             {
               "name": "={{ $('Map Form to Template Variables').item.json.clientName }}",
+              "deliveryMethod": "={{ $('Map Form to Template Variables').item.json.clientWhatsapp ? 'whatsapp' : 'email' }}",
               "email": "={{ $('Map Form to Template Variables').item.json.clientEmail }}",
-              "whatsapp": "={{ $('Map Form to Template Variables').item.json.clientWhatsapp }}"
+              "whatsapp": "={{ $('Map Form to Template Variables').item.json.clientWhatsapp }}",
+              "roleName": "cliente"
             }
           ]
         },
         "signatureValidations": {
           "verifyAutografa": true
-        },
-        "configuration": {
-          "sendInvitations": true,
-          "templateVariables": "={{ $('Map Form to Template Variables').item.json.templateVariablesJson }}"
         }
       },
       "id": "allsign-create",
-      "name": "AllSign: Create & Send NDA",
+      "name": "AllSign: Create NDA",
+      "type": "n8n-nodes-allsign.allsign",
+      "typeVersion": 1,
+      "position": [740, 300],
+      "credentials": {
+        "allSignApi": {
+          "id": "",
+          "name": "AllSign API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "document",
+        "operation": "sendDocument",
+        "documentId": "={{ $json.id }}"
+      },
+      "id": "allsign-send",
+      "name": "AllSign: Send NDA for Signature",
       "type": "n8n-nodes-allsign.allsign",
       "typeVersion": 1,
       "position": [1000, 300],
@@ -280,18 +288,18 @@
       "main": [
         [
           {
-            "node": "Download NDA Template (DOCX)",
+            "node": "AllSign: Create NDA",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Download NDA Template (DOCX)": {
+    "AllSign: Create NDA": {
       "main": [
         [
           {
-            "node": "AllSign: Create & Send NDA",
+            "node": "AllSign: Send NDA for Signature",
             "type": "main",
             "index": 0
           }

@@ -2,6 +2,68 @@
 
 All notable changes to `n8n-nodes-allsign` will be documented in this file.
 
+## [0.6.0] — 2026-07-23
+
+### 🔄 Changed
+
+- **Restructure to n8n Resource + Operation pattern (Document resource)** — added a `Resource` selector (`Document`, the only value) as the node's first field, with `Operation` and all 17 operation-specific fields now also gated on `resource: ['document']` in addition to their existing `operation` conditions. This is a pure UI/organization change — `execute()` still routes purely on `operation`, and every request body/query/header produced is unchanged. Resolves the n8n lint warning `@n8n/community-nodes/resource-operation-pattern` ("8 operations without resources"), which is now fully clear (0 errors, 0 warnings).
+
+### ✨ Added
+
+Five new operations (Tier 2), bringing the node to 8 operations total:
+
+- **List Documents** (`GET /v3/documents`) — read-only, paginated. `Limit` (1-100, default 20) plus an optional `Filters` collection: Status, Scope, Search, Starting After, Ending Before, Folder ID, Include Total. Only the filters you set are sent.
+- **List Signers** (`GET /v3/documents/{documentId}/signers`) — read-only, returns a document's signers.
+- **Get Evidence** (`GET /v3/documents/{documentId}/evidence`) — read-only, returns the evidence bundle (signed PDF + NOM-151 constancia, presigned URLs). `available` is `false` until every signer completes.
+- **Void Document** (`POST /v3/documents/{documentId}/void`) — write. Optional `Reason`, omitted from the body when empty. Not a delete — NOM-151 retention keeps the voided record.
+- **Remind Signer** (`POST /v3/documents/{documentId}/signers/{signerId}/remind`) — write, no request body (the endpoint doesn't take one). New required `Signer ID` field, visible only for this operation.
+
+### 🔄 Changed
+
+- `Document ID` is now shared across six operations (Send, Get, List Signers, Get Evidence, Void, Remind) via one property with an extended `displayOptions`.
+- `Idempotency Key` (auto-generated UUID v4 when left empty) is now shared across all three write operations (Send, Void, Remind) via one property, generalized wording.
+- Dynamic `subtitle` now covers all 8 operations via a lookup table.
+
+### ✨ Added
+
+- **Get Document operation** — new `Operation: Get Document` calls `GET /v3/documents/{documentId}` to retrieve a document by ID. Read-only: no request body, no `Idempotency-Key` header (doesn't apply to GET). The `Document ID` field is now shared between Send Document and Get Document.
+
+## [0.3.1] — 2026-07-23
+
+### 🐛 Fixed
+
+- **Auto-generate Idempotency-Key when not provided** — the AllSign API rejects `POST /v3/documents` (Create) and `POST /v3/documents/{documentId}/send` (Send) with `400 IDEMPOTENCY_KEY_REQUIRED` if the header is missing. The node used to only send it when the optional field was filled in, so it failed out-of-the-box. Now, when the user leaves Idempotency Key empty, the node generates a random UUID v4 per item (via `node:crypto`'s `randomUUID()`) and sends it as the `Idempotency-Key` header. A user-provided key (for stable retries) is still respected as-is.
+
+## [0.3.0] — 2026-07-23
+
+### ✨ Added
+
+- **Send Document operation** — new `Operation` selector (Create Document / Send Document) makes the node multi-operation. Send Document calls `POST /v3/documents/{documentId}/send`, which advances the document's state and dispatches the signing invitation.
+- **Recipients (optional)** — a `fixedCollection` matching the Signers UX (Delivery Method: Email/WhatsApp, Name), mapped to `recipients[]` (camelCase `email`/`phone`/`name`). Leave empty to send to the signers already attached to the document — the backend falls back to them when `recipients` is omitted.
+- **Idempotency Key** for Send Document, same pattern as Create Document (sent as the `Idempotency-Key` header).
+
+### 🔄 Changed
+
+- The node's `subtitle` is now dynamic (`Create Document` / `Send Document`) based on the selected operation.
+- Existing Create Document fields (`Document Name`, `Source`, `Signers`, `Signature Validations`, `Configuration`, etc.) are unchanged in behavior — they're now gated behind `Operation = Create Document` for the UI, with no change to the request body they produce. All 38 existing Create Document tests still pass unmodified.
+
+## [0.2.0] — 2026-07-21
+
+### 🔄 Changed
+
+- **Migrate Create Document to AllSign API v3** (single-call create with inline signers + signature validation) — replaces the v2 multi-step orchestration (`POST /v2/documents/` → `/add-signer` → `/signature-fields` → `/invite-bulk`) with one `POST /v3/documents` request.
+- **Source: File or Template** — new top-level "Source" selector. File keeps the existing Binary/URL input; Template references an existing AllSign template by ID and fills in `Template Values`.
+- **Signers** — now sent inline (`signers[]`) at creation time; added optional **Role Name** per signer for auto-assigning template variables.
+- **Signature Validations** — reduced to v3's curated 6-flag subset (Autógrafa, NOM-151, FEA, Biometric Selfie, ID Scan, Video Signature). eIDAS, Confirm Name, Identity Verification, and SynthID are not part of the v3 create contract and were removed.
+- **Idempotency Key** — new optional field in Configuration, sent as the `Idempotency-Key` header.
+- **Credential test** — now validates the API key against `GET /v3/documents?limit=1` instead of the deprecated `/v2/test/security`.
+
+### 🗑️ Removed
+
+- Signature Field placement (coordinates/anchor text) — not part of the v3 create body; fields are positioned after creation in a future operation.
+- Permissions (owner email, collaborators, public read) and Folder (ID/name) — not part of the v3 create body.
+- Send Invitations toggle — v3 dispatches invitations to inline signers as part of document creation.
+
 ## [0.1.0] — 2026-03-19
 
 ### ✨ Added

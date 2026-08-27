@@ -45,7 +45,7 @@ export class AllSignApi implements ICredentialType {
     test: ICredentialTestRequest = {
         request: {
             baseURL: '={{$credentials.baseUrl || "https://api.allsign.io"}}',
-            url: '/v2/test/security',
+            url: '/v3/documents?limit=1',
             method: 'GET',
         },
     };

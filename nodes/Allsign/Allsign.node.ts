@@ -1,12 +1,136 @@
+import { createHash, randomUUID } from 'node:crypto';
 import type {
-    IDataObject,
-    IExecuteFunctions,
-    INodeExecutionData,
-    INodeType,
-    INodeTypeDescription,
-    JsonObject,
+	IDataObject,
+	IExecuteFunctions,
+	IHttpRequestOptions,
+	INodeExecutionData,
+	INodeType,
+	INodeTypeDescription,
+	JsonObject,
 } from 'n8n-workflow';
 import { NodeConnectionTypes, NodeApiError, NodeOperationError } from 'n8n-workflow';
+
+/**
+ * Idempotency-Key determinista para una operación de escritura.
+ *
+ * Por qué NO `randomUUID()`: n8n reintenta un nodo por su cuenta cuando el POST
+ * hace timeout o devuelve 5xx. Con una llave nueva en cada intento, la API ve
+ * dos peticiones distintas y crea DOS documentos — y cobra dos veces. El
+ * síntoma es el mismo del cliente que canceló: falla en silencio y se ve bien.
+ *
+ * La llave se deriva de (executionId, itemIndex, operación, documentId) para que:
+ *   - el mismo item reintentado reuse su llave  → la API replaya, no duplica;
+ *   - dos operaciones del mismo item no colisionen → un `void` no se replaya
+ *     como si fuera el `send` anterior devolviendo su respuesta.
+ *
+ * La forma importa: `app/api/v3/idempotency.py` valida contra
+ *   ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$
+ * o sea UUID v4 ESTRICTO — el `4` y el `[89ab]` no son decorativos. Por eso no
+ * basta concatenar los campos: se hashean y se fuerzan esos dos nibbles.
+ *
+ * Si no hay executionId (pruebas manuales, algunos contextos de n8n), se cae a
+ * `randomUUID()`: preferimos una llave aleatoria a una constante que provoque
+ * replays entre ejecuciones distintas.
+ */
+function stableIdempotencyKey(
+	executionId: string,
+	itemIndex: number,
+	operation: string,
+	documentId = '',
+): string {
+	if (!executionId) return randomUUID();
+
+	const h = createHash('sha256')
+		.update(`${executionId}:${itemIndex}:${operation}:${documentId}`)
+		.digest('hex');
+
+	// Nibble 12 fijo en '4' (versión) y nibble 16 en 8|9|a|b (variante RFC 4122).
+	const variant = '89ab'[parseInt(h[16], 16) % 4];
+	return [
+		h.slice(0, 8),
+		h.slice(8, 12),
+		`4${h.slice(13, 16)}`,
+		`${variant}${h.slice(17, 20)}`,
+		h.slice(20, 32),
+	].join('-');
+}
+
+/**
+ * El porqué del error, sacado del cuerpo problem+json de la API.
+ *
+ * n8n solo enseña `message` y `description`. Sin esto el usuario ve
+ * "Document send failed" y nada más: el `detail` que explica qué pasó, el
+ * `code` estable y sobre todo el `requestId` —lo que soporte necesita para
+ * rastrear la llamada— se quedan en el cuerpo de la respuesta, invisibles.
+ *
+ * El cuerpo puede llegar como string: la API responde
+ * `application/problem+json`, no `application/json`, y no todo parser
+ * reconoce ese content-type. Si no se parsea, se devuelve undefined en vez
+ * de enseñar el JSON crudo.
+ */
+function apiErrorDescription(error: unknown): string | undefined {
+	const response = (error as { response?: { body?: unknown; data?: unknown } })?.response;
+	const raw = response?.body ?? response?.data ?? (error as { body?: unknown })?.body;
+
+	let body = raw;
+	if (typeof raw === 'string') {
+		try {
+			body = JSON.parse(raw);
+		} catch {
+			return undefined;
+		}
+	}
+	if (!body || typeof body !== 'object') return undefined;
+
+	const { detail, code, requestId } = body as {
+		detail?: unknown;
+		code?: unknown;
+		requestId?: unknown;
+	};
+
+	const parts: string[] = [];
+	if (typeof detail === 'string' && detail) parts.push(detail);
+	if (typeof code === 'string' && code) parts.push(`code: ${code}`);
+	if (typeof requestId === 'string' && requestId) parts.push(`requestId: ${requestId}`);
+
+	return parts.length > 0 ? parts.join(' - ') : undefined;
+}
+
+/**
+ * Nombre de archivo derivado de una URL de descarga.
+ *
+ * El código tomaba el último segmento de la URL COMPLETA, así que la query
+ * string se colaba en el nombre y rompía la inferencia del tipo:
+ *
+ *   Dropbox    …/nda.docx?dl=1          -> "nda.docx?dl=1"  -> no acaba en .docx -> pdf
+ *   S3 firmado …/contrato.docx?X-Amz-…  -> idem
+ *   Drive      …/uc?export=download&id= -> "uc?export=download&id=…" como nombre
+ *
+ * Un .docx declarado como pdf llega mal al backend. Se corta query y hash antes
+ * de leer el último segmento, y si lo que queda no tiene extensión —el caso de
+ * Drive, cuyo path es sólo `/uc`— se cae a un nombre por defecto en vez de
+ * mandar basura.
+ */
+function fileNameFromUrl(rawUrl: string, fallback = 'document.pdf'): string {
+	let pathOnly = rawUrl;
+	try {
+		pathOnly = new URL(rawUrl).pathname;
+	} catch {
+		// URL relativa o malformada: corta a mano en el primer ? o #
+		pathOnly = rawUrl.split('#')[0].split('?')[0];
+	}
+
+	const last = pathOnly.split('/').filter(Boolean).pop() ?? '';
+	let name: string;
+	try {
+		name = decodeURIComponent(last);
+	} catch {
+		name = last; // %-encoding inválido: úsalo tal cual antes que tronar
+	}
+
+	// Sin extensión no hay tipo que inferir — mejor el default que "uc".
+	return /\.[a-z0-9]{2,5}$/i.test(name) ? name : fallback;
+}
 
 export class Allsign implements INodeType {
 	description: INodeTypeDescription = {
@@ -15,9 +139,10 @@ export class Allsign implements INodeType {
 		icon: 'file:allsign.svg',
 		group: ['transform'],
 		version: 1,
-		subtitle: 'Create & Send Document',
+		subtitle:
+			'={{ ({ createDocument: "Create Document", sendDocument: "Send Document", getDocument: "Get Document", listDocuments: "List Documents", listDocumentSigners: "List Signers", getDocumentEvidence: "Get Evidence", voidDocument: "Void Document", remindSigner: "Remind Signer" })[$parameter["operation"]] }}',
 		description:
-			'Create, sign, and manage documents with AllSign e-signature platform. NOM-151, FEA, eIDAS.',
+			'Create, send, retrieve, list, void, and remind on documents with the AllSign API v3 — inline signers and signature validation at creation, plus evidence bundles and manual reminders. NOM-151, FEA, biometric verification.',
 		defaults: {
 			name: 'AllSign',
 		},
@@ -38,14 +163,96 @@ export class Allsign implements INodeType {
 				'Biometric',
 				'NOM-151',
 				'FEA',
-				'eIDAS',
 				'Signer',
 				'WhatsApp',
 			],
 		},
 		properties: [
 			// ====================================================
-			// DOCUMENT DETAILS
+			// RESOURCE
+			// ====================================================
+			{
+				displayName: 'Resource',
+				name: 'resource',
+				type: 'options',
+				noDataExpression: true,
+				default: 'document',
+				options: [
+					{
+						name: 'Document',
+						value: 'document',
+					},
+				],
+			},
+
+			// ====================================================
+			// OPERATION
+			// ====================================================
+			{
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				default: 'createDocument',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+					},
+				},
+				options: [
+					{
+						name: 'Create Document',
+						value: 'createDocument',
+						description: 'Create a document from a file or template, with inline signers and signature validation',
+						action: 'Create a document',
+					},
+					{
+						name: 'Get Document',
+						value: 'getDocument',
+						description: 'Retrieve a document by ID',
+						action: 'Get a document',
+					},
+					{
+						name: 'Get Evidence',
+						value: 'getDocumentEvidence',
+						description: 'Get a document evidence bundle (signed PDF and NOM-151 constancia)',
+						action: 'Get document evidence',
+					},
+					{
+						name: 'List Documents',
+						value: 'listDocuments',
+						description: 'List documents, with optional filters',
+						action: 'List documents',
+					},
+					{
+						name: 'List Signers',
+						value: 'listDocumentSigners',
+						description: 'List the signers on a document',
+						action: 'List document signers',
+					},
+					{
+						name: 'Remind Signer',
+						value: 'remindSigner',
+						description: 'Send a manual reminder to a signer who has not completed yet',
+						action: 'Remind a signer',
+					},
+					{
+						name: 'Send Document',
+						value: 'sendDocument',
+						description: 'Send an existing document to its signers, optionally overriding recipients',
+						action: 'Send a document',
+					},
+					{
+						name: 'Void Document',
+						value: 'voidDocument',
+						description: 'Void (annul) a document — not a delete, the record is kept for NOM-151 retention',
+						action: 'Void a document',
+					},
+				],
+			},
+
+			// ====================================================
+			// DOCUMENT DETAILS (Create Document)
 			// ====================================================
 
 			// ------ Document Name ------
@@ -57,14 +264,54 @@ export class Allsign implements INodeType {
 				required: true,
 				placeholder: 'e.g. Contract Q1 2026',
 				description: 'Name for the new document',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+						operation: ['createDocument'],
+					},
+				},
 			},
 
-			// ------ File Source ------
+			// ------ Source ------
+			{
+				displayName: 'Source',
+				name: 'source',
+				type: 'options',
+				default: 'file',
+				description: 'Where the document content comes from — an inline file or an existing AllSign template',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+						operation: ['createDocument'],
+					},
+				},
+				options: [
+					{
+						name: 'File',
+						value: 'file',
+						description: 'Upload a PDF or DOCX (from URL or binary input)',
+					},
+					{
+						name: 'Template',
+						value: 'template',
+						description: 'Use an existing AllSign template, filling in its variables',
+					},
+				],
+			},
+
+			// ------ File Source (source = file) ------
 			{
 				displayName: 'File Source',
 				name: 'fileSource',
 				type: 'options',
 				default: 'binary',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+						operation: ['createDocument'],
+						source: ['file'],
+					},
+				},
 				options: [
 					{
 						name: 'Binary Input',
@@ -74,7 +321,7 @@ export class Allsign implements INodeType {
 					{
 						name: 'URL',
 						value: 'url',
-						description: 'Provide a public URL to the PDF file',
+						description: 'Provide a public URL to the file',
 					},
 				],
 			},
@@ -83,9 +330,12 @@ export class Allsign implements INodeType {
 				name: 'binaryProperty',
 				type: 'string',
 				default: 'data',
-				description: 'Name of the binary property containing the PDF file',
+				description: 'Name of the binary property containing the file',
 				displayOptions: {
 					show: {
+						resource: ['document'],
+						operation: ['createDocument'],
+						source: ['file'],
 						fileSource: ['binary'],
 					},
 				},
@@ -96,17 +346,52 @@ export class Allsign implements INodeType {
 				type: 'string',
 				default: '',
 				placeholder: 'https://example.com/document.pdf',
-				description: 'URL of the PDF file. Supports direct links, Google Drive, and Dropbox — auto-converted to download URLs. For Google Drive, the file must be shared as "Anyone with the link". For private files, use Binary Input with the Google Drive node.',
+				description: 'URL of the file. Supports direct links, Google Drive, and Dropbox — auto-converted to download URLs. For Google Drive, the file must be shared as "Anyone with the link". For private files, use Binary Input with the Google Drive node.',
 				displayOptions: {
 					show: {
+						resource: ['document'],
+						operation: ['createDocument'],
+						source: ['file'],
 						fileSource: ['url'],
 					},
 				},
 			},
 
+			// ------ Template (source = template) ------
+			{
+				displayName: 'Template ID',
+				name: 'templateId',
+				type: 'string',
+				default: '',
+				required: true,
+				placeholder: 'tmpl_...',
+				description: 'ID of an existing AllSign template',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+						operation: ['createDocument'],
+						source: ['template'],
+					},
+				},
+			},
+			{
+				displayName: 'Template Values',
+				name: 'templateValues',
+				type: 'json',
+				default: '{}',
+				placeholder: '{"nombre_completo": "Juan Pérez", "monto": "$10,000"}',
+				description: 'Key-value pairs to fill in the template variables. Keys are the template\'s natural variable names (never camelCased).',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+						operation: ['createDocument'],
+						source: ['template'],
+					},
+				},
+			},
 
 			// ====================================================
-			// SIGNERS
+			// SIGNERS (Create Document)
 			// ====================================================
 			{
 				displayName: 'Signers',
@@ -119,19 +404,17 @@ export class Allsign implements INodeType {
 				required: true,
 				placeholder: 'Add Signer',
 				description: 'People who need to sign the document. Each signer receives their invitation via their chosen delivery method — email or WhatsApp.',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+						operation: ['createDocument'],
+					},
+				},
 				options: [
 					{
 						name: 'signerValues',
 						displayName: 'Signer',
 						values: [
-							{
-								displayName: 'Name',
-								name: 'name',
-								type: 'string',
-								default: '',
-								required: true,
-								description: 'Full name of the signer',
-							},
 							{
 								displayName: 'Delivery Method',
 								name: 'deliveryMethod',
@@ -166,6 +449,22 @@ export class Allsign implements INodeType {
 								},
 							},
 							{
+								displayName: 'Name',
+								name: 'name',
+								type: 'string',
+								default: '',
+								required: true,
+								description: 'Full name of the signer',
+							},
+							{
+								displayName: 'Role Name',
+								name: 'roleName',
+								type: 'string',
+								default: '',
+								placeholder: 'e.g. proveedor',
+								description: 'Semantic role for this signer (e.g. "proveedor"), used to auto-assign template variables marked with that role. Optional.',
+							},
+							{
 								displayName: 'WhatsApp',
 								name: 'whatsapp',
 								type: 'string',
@@ -185,101 +484,7 @@ export class Allsign implements INodeType {
 			},
 
 			// ====================================================
-			// SIGNATURE FIELDS
-			// ====================================================
-			{
-				displayName: 'Signature Fields',
-				name: 'signatureFields',
-				type: 'fixedCollection',
-				typeOptions: {
-					multipleValues: true,
-				},
-				default: {},
-				placeholder: 'Add Signature Field',
-				description:
-					'Pre-position signature fields on the document. Only available for signers with email. WhatsApp-only signers place their signature manually when opening the link.',
-				options: [
-					{
-						name: 'fieldValues',
-						displayName: 'Field',
-						values: [
-							{
-						displayName: 'All Pages',
-						name: 'includeInAllPages',
-						type: 'boolean',
-						default: false,
-						description: 'Whether to place this field on every page of the document',
-							},
-							{
-						displayName: 'Anchor Text',
-						name: 'anchorString',
-						type: 'string',
-						default: '',
-						placeholder: 'e.g. Client Signature',
-						description: 'Text to search for in the PDF	—	the signature field will be placed where this text appears',
-							},
-							{
-						displayName: 'Height',
-						name: 'height',
-						type: 'number',
-						default: 100,
-						description: 'Height of the signature field in points. Width is auto-calculated (2:1 ratio).',
-							},
-							{
-						displayName: 'Page Number',
-						name: 'pageNumber',
-						type: 'number',
-						default: 1,
-						description: 'Page where the signature field should be placed (starts at 1). Ignored when All Pages is enabled.',
-							},
-							{
-						displayName: 'Placement Mode',
-						name: 'placementMode',
-						type: 'options',
-						default: 'coordinates',
-						options: [
-									{
-										name: 'Anchor Text',
-										value: 'anchor',
-										description: 'Place field where a specific text is found in the PDF',
-									},
-									{
-										name: 'Coordinates (X, Y)',
-										value: 'coordinates',
-										description: 'Place field at specific X, Y coordinates on a page',
-									},
-								]
-							},
-							{
-						displayName: 'Signer Email',
-						name: 'participantEmail',
-						type: 'string',
-						default: '',
-							required:	true,
-						placeholder: 'name@email.com',
-						description: 'Email of the signer this field belongs to (must match a signer email listed above)',
-							},
-							{
-						displayName: 'X Position',
-						name: 'x',
-						type: 'number',
-						default: 100,
-						description: 'Horizontal position in points from left edge of page',
-							},
-							{
-						displayName: 'Y Position',
-						name: 'y',
-						type: 'number',
-						default: 500,
-						description: 'Vertical position in points from top edge of page',
-							},
-					],
-					},
-				],
-			},
-
-			// ====================================================
-			// 🛡️ SIGNATURE VALIDATIONS (collapsible)
+			// 🛡️ SIGNATURE VALIDATIONS (collapsible, Create Document)
 			// ====================================================
 			{
 				displayName: 'Signature Validations',
@@ -289,6 +494,12 @@ export class Allsign implements INodeType {
 				default: {},
 				description:
 					'Signature types and verification methods for legal validity and security',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+						operation: ['createDocument'],
+					},
+				},
 				options: [
 					{
 						displayName: 'Biometric Selfie',
@@ -296,23 +507,7 @@ export class Allsign implements INodeType {
 						type: 'boolean',
 						default: false,
 						description:
-							'Whether to require a biometric selfie for face comparison against the signer\'s ID',
-					},
-					{
-						displayName: 'Confirm Name',
-						name: 'verifyConfirmName',
-						type: 'boolean',
-						default: false,
-						description:
-							'Whether to require the signer to type their full name as confirmation',
-					},
-					{
-						displayName: 'eIDAS (European Electronic Signature)',
-						name: 'verifyEidas',
-						type: 'boolean',
-						default: false,
-						description:
-							'Whether to apply eIDAS compliance to the document for European legal validity',
+							'Whether to require a biometric selfie for face comparison against the signer\'s ID (anti-deepfake)',
 					},
 					{
 						displayName: 'FEA (Advanced Electronic Signature)',
@@ -328,7 +523,7 @@ export class Allsign implements INodeType {
 						type: 'boolean',
 						default: true,
 						description:
-							'Whether to require a handwritten-style digital signature with biometric capture. Enabled by default.',
+							'Whether to require a handwritten-style digital signature. Enabled by default.',
 					},
 					{
 						displayName: 'ID Scan',
@@ -339,28 +534,12 @@ export class Allsign implements INodeType {
 							'Whether to require signers to scan their government-issued ID',
 					},
 					{
-						displayName: 'Identity Verification',
-						name: 'verifyIdentity',
-						type: 'boolean',
-						default: false,
-						description:
-							'Whether to require identity verification for signers',
-					},
-					{
 						displayName: 'NOM-151 (Timestamping)',
 						name: 'verifyNom151',
 						type: 'boolean',
 						default: false,
 						description:
-							'Whether to apply NOM-151 certified timestamping to the document',
-					},
-					{
-						displayName: 'SynthID (AI Detection)',
-						name: 'verifySynthId',
-						type: 'boolean',
-						default: false,
-						description:
-							'Whether to verify the selfie was taken by a real person and not AI-generated (requires Biometric Selfie)',
+							'Whether to apply NOM-151 certified conservation timestamping to the document',
 					},
 					{
 						displayName: 'Video Signature',
@@ -374,7 +553,7 @@ export class Allsign implements INodeType {
 			},
 
 			// ====================================================
-			// ⚙️ CONFIGURATION (collapsible)
+			// ⚙️ CONFIGURATION (collapsible, Create Document)
 			// ====================================================
 			{
 				displayName: 'Configuration',
@@ -382,8 +561,13 @@ export class Allsign implements INodeType {
 				type: 'collection',
 				placeholder: 'Configure',
 				default: {},
-				description:
-					'Controls the invitation flow, expiration, and template variables',
+				description: 'Controls expiration and request idempotency',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+						operation: ['createDocument'],
+					},
+				},
 				options: [
 					{
 						displayName: 'Expires At',
@@ -394,93 +578,283 @@ export class Allsign implements INodeType {
 							'Optional expiration deadline (ISO 8601). After this date, the document expires and can no longer be signed.',
 					},
 					{
-						displayName: 'Send Invitations',
-						name: 'sendInvitations',
-						type: 'boolean',
-						default: true,
-						description:
-							'Whether to send signing links to each signer after the document is created. The best channel (email or WhatsApp) is auto-detected per signer. When both are provided, OTP is sent on both channels for dual verification. Disable to share links manually.',
-					},
-					{
-						displayName: 'Template Variables (DOCX)',
-						name: 'templateVariables',
-						type: 'json',
-						default: '{}',
-						placeholder: '{"client_name": "Juan Pérez", "amount": "$10,000"}',
-						description:
-							'Key-value pairs to replace variables in DOCX templates (e.g. {{ client_name }} → "Juan Pérez"). Only applied for .docx files; ignored for PDFs.',
-					},
-				],
-			},
-
-			// ====================================================
-			// 🔐 PERMISSIONS (collapsible)
-			// ====================================================
-			{
-				displayName: 'Permissions (Optional)',
-				name: 'permissions',
-				type: 'collection',
-				placeholder: 'Configure Permissions',
-				default: {},
-				description:
-					'Define the document owner and collaborators with granular access control',
-				options: [
-					{
-						displayName: 'Collaborators',
-						name: 'collaborators',
-						type: 'json',
-						default: '[]',
-						placeholder: '[{"email": "cfo@company.com", "permissions": ["read", "sign"]}]',
-						description:
-							'List of collaborators with specific permissions. Each has an email and a permissions array. Valid permissions: read, update, delete, sign, admin. A collaborator cannot also be a signer.',
-					},
-					{
-						displayName: 'Owner Email',
-						name: 'ownerEmail',
+						displayName: 'Idempotency Key',
+						name: 'idempotencyKey',
 						type: 'string',
 						default: '',
-						placeholder: 'e.g. legal@company.com',
+						placeholder: 'e.g. order-4821-create',
 						description:
-							'Email of the document owner. If omitted, the owner will be the user associated with the API key.',
-					},
-					{
-						displayName: 'Public Read',
-						name: 'isPublicRead',
-						type: 'boolean',
-						default: false,
-						description:
-							'Whether the document is publicly readable without authentication',
+							'Optional — set your own key to safely retry this request without creating a duplicate document. If left empty, a random UUID v4 is auto-generated per execution (the API requires this header on every write).',
 					},
 				],
 			},
 
 			// ====================================================
-			// 📁 FOLDER (collapsible)
+			// DOCUMENT (Send / Get / List Signers / Get Evidence / Void / Remind)
 			// ====================================================
 			{
-				displayName: 'Folder (Optional)',
-				name: 'folderSettings',
-				type: 'collection',
-				placeholder: 'Configure Folder',
+				displayName: 'Document ID',
+				name: 'documentId',
+				type: 'string',
+				default: '',
+				required: true,
+				placeholder: 'doc_...',
+				description: 'ID of the document (doc_...) — e.g. the ID returned by Create Document',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+						operation: [
+							'sendDocument',
+							'getDocument',
+							'listDocumentSigners',
+							'getDocumentEvidence',
+							'voidDocument',
+							'remindSigner',
+						],
+					},
+				},
+			},
+
+			// ====================================================
+			// RECIPIENTS (Send Document)
+			// ====================================================
+			{
+				displayName: 'Recipients',
+				name: 'recipients',
+				type: 'fixedCollection',
+				typeOptions: {
+					multipleValues: true,
+				},
 				default: {},
-				description:
-					'Organize the document into a folder. Use either Folder ID or Folder Name — they are mutually exclusive.',
+				placeholder: 'Add Recipient',
+				description: 'Optional — overrides who receives the invitation. Leave empty to send to the signers already attached to the document.',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+						operation: ['sendDocument'],
+					},
+				},
 				options: [
+					{
+						name: 'recipientValues',
+						displayName: 'Recipient',
+						values: [
+							{
+								displayName: 'Delivery Method',
+								name: 'deliveryMethod',
+								type: 'options',
+								default: 'email',
+								description: 'How the invitation will be delivered to this recipient',
+								options: [
+									{
+										name: 'Email',
+										value: 'email',
+										description: 'Send the invitation via email',
+									},
+									{
+										name: 'WhatsApp',
+										value: 'whatsapp',
+										description: 'Send the invitation via WhatsApp',
+									},
+								],
+							},
+							{
+								displayName: 'Email',
+								name: 'email',
+								type: 'string',
+								placeholder: 'name@email.com',
+								default: '',
+								required: true,
+								description: 'Email address of the recipient',
+								displayOptions: {
+									show: {
+										deliveryMethod: ['email'],
+									},
+								},
+							},
+							{
+								displayName: 'Name',
+								name: 'name',
+								type: 'string',
+								default: '',
+								description: 'Name of the recipient (optional)',
+							},
+							{
+								displayName: 'WhatsApp',
+								name: 'whatsapp',
+								type: 'string',
+								default: '',
+								placeholder: '+525512345678',
+								required: true,
+								description: 'WhatsApp number with country code (e.g. +525512345678)',
+								displayOptions: {
+									show: {
+										deliveryMethod: ['whatsapp'],
+									},
+								},
+							},
+						],
+					},
+				],
+			},
+
+			// ====================================================
+			// ⚙️ CONFIGURATION (Send Document / Void Document / Remind Signer)
+			// ====================================================
+			{
+				displayName: 'Idempotency Key',
+				name: 'idempotencyKey',
+				type: 'string',
+				default: '',
+				placeholder: 'e.g. order-4821-send',
+				description: 'Optional — set your own key to safely retry this request without duplicating the effect (a second invitation, void, or reminder). If left empty, a random UUID v4 is auto-generated per execution (the API requires this header on every write).',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+						operation: ['sendDocument', 'voidDocument', 'remindSigner'],
+					},
+				},
+			},
+
+			// ====================================================
+			// REASON (Void Document)
+			// ====================================================
+			{
+				displayName: 'Reason',
+				name: 'reason',
+				type: 'string',
+				default: '',
+				placeholder: 'e.g. Contract superseded by a new draft',
+				description: 'Optional — why the document is being voided. Kept in the document audit log.',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+						operation: ['voidDocument'],
+					},
+				},
+			},
+
+			// ====================================================
+			// SIGNER ID (Remind Signer)
+			// ====================================================
+			{
+				displayName: 'Signer ID',
+				name: 'signerId',
+				type: 'string',
+				default: '',
+				required: true,
+				placeholder: 'sgr_...',
+				description: 'ID of the signer to remind (sgr_...) — get it from List Signers',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+						operation: ['remindSigner'],
+					},
+				},
+			},
+
+			// ====================================================
+			// LIST DOCUMENTS
+			// ====================================================
+			{
+				displayName: 'Limit',
+				name: 'limit',
+				type: 'number',
+				// eslint-disable-next-line n8n-nodes-base/node-param-default-wrong-for-limit -- the AllSign API defaults `limit` to 20 (not n8n's usual 50); this matches GET /v3/documents server-side.
+				default: 20,
+				typeOptions: {
+					minValue: 1,
+					maxValue: 100,
+				},
+				// eslint-disable-next-line n8n-nodes-base/node-param-description-wrong-for-limit -- documents the real API default/range instead of the generic convention text.
+				description: 'Max number of documents to return (1-100, default 20 to match the API)',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+						operation: ['listDocuments'],
+					},
+				},
+			},
+			{
+				displayName: 'Filters',
+				name: 'filters',
+				type: 'collection',
+				placeholder: 'Add Filter',
+				default: {},
+				description: 'Optional filters and pagination cursors for the list',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+						operation: ['listDocuments'],
+					},
+				},
+				options: [
+					{
+						displayName: 'Ending Before',
+						name: 'endingBefore',
+						type: 'string',
+						default: '',
+						description: 'Cursor — return documents ending before this one (mutually exclusive with Starting After)',
+					},
 					{
 						displayName: 'Folder ID',
 						name: 'folderId',
 						type: 'string',
 						default: '',
-						placeholder: 'e.g. 550e8400-e29b-41d4-a716-446655440000',
-						description: 'UUID of an existing folder',
+						placeholder: 'fld_...',
+						description: 'Only return documents in this folder',
 					},
 					{
-						displayName: 'Folder Name',
-						name: 'folderName',
+						displayName: 'Include Total',
+						name: 'includeTotal',
+						type: 'boolean',
+						default: false,
+						description: 'Whether to include the total match count (extra query cost)',
+					},
+					{
+						displayName: 'Scope',
+						name: 'scope',
+						type: 'options',
+						default: 'owner',
+						description: 'Which documents to include, relative to the caller',
+						options: [
+							{ name: 'Owner (Default)', value: 'owner', description: 'Only documents owned by the caller' },
+							{ name: 'Organization', value: 'org', description: "All documents in the caller's organization" },
+							{ name: 'Tenant', value: 'tenant', description: "All documents in the caller's tenant (multi-org admin scope)" },
+							{ name: 'Accessible', value: 'accessible', description: 'Documents the caller owns or participates in' },
+						],
+					},
+					{
+						displayName: 'Search',
+						name: 'search',
 						type: 'string',
 						default: '',
-						placeholder: 'e.g. Contracts 2026',
-						description: 'Name of the folder. If it doesn\'t exist, it will be created automatically.',
+						description: 'Free-text search',
+					},
+					{
+						displayName: 'Starting After',
+						name: 'startingAfter',
+						type: 'string',
+						default: '',
+						description: 'Cursor — return documents starting after this one (mutually exclusive with Ending Before)',
+					},
+					{
+						displayName: 'Status',
+						name: 'status',
+						type: 'options',
+						default: '',
+						description: 'Filter by lifecycle status',
+						options: [
+							{ name: 'Any', value: '' },
+							{ name: 'Awaiting Signatures', value: 'awaiting_signatures' },
+							{ name: 'Collecting Data', value: 'collecting_data' },
+							{ name: 'Completed', value: 'completed' },
+							{ name: 'Correcting', value: 'correcting' },
+							{ name: 'Draft', value: 'draft' },
+							{ name: 'Expired', value: 'expired' },
+							{ name: 'Processing', value: 'processing' },
+							{ name: 'Voided', value: 'voided' },
+						],
 					},
 				],
 			},
@@ -498,150 +872,420 @@ export class Allsign implements INodeType {
 
 		for (let i = 0; i < items.length; i++) {
 			try {
+				const operation = this.getNodeParameter('operation', i, 'createDocument') as string;
+
+				if (operation === 'sendDocument') {
+					const documentId = (this.getNodeParameter('documentId', i) as string).trim();
+					if (!documentId) {
+						throw new NodeOperationError(this.getNode(), 'Document ID is required', {
+							itemIndex: i,
+						});
+					}
+
+					const recipientsData = this.getNodeParameter('recipients.recipientValues', i, []) as Array<{
+						name?: string;
+						deliveryMethod: string;
+						email?: string;
+						whatsapp?: string;
+					}>;
+
+					// Build recipients[] — each recipient uses exactly one delivery method
+					const recipients = recipientsData.map((recipient) => {
+						const r: Record<string, string> = {};
+						const method = recipient.deliveryMethod || 'email';
+						const label = recipient.name ? ` "${recipient.name}"` : '';
+
+						if (method === 'email') {
+							const email = (recipient.email || '').trim();
+							if (!email) {
+								throw new NodeOperationError(
+									this.getNode(),
+									`Recipient${label} has Email as delivery method but no email address was provided`,
+									{ itemIndex: i },
+								);
+							}
+							r.email = email;
+						} else {
+							const whatsapp = (recipient.whatsapp || '').trim();
+							if (!whatsapp) {
+								throw new NodeOperationError(
+									this.getNode(),
+									`Recipient${label} has WhatsApp as delivery method but no WhatsApp number was provided`,
+									{ itemIndex: i },
+								);
+							}
+							r.phone = whatsapp;
+						}
+
+						const name = (recipient.name || '').trim();
+						if (name) {
+							r.name = name;
+						}
+
+						return r;
+					});
+
+					// The API requires Idempotency-Key on every write (400
+
+					// La llave por defecto es DETERMINISTA, no aleatoria: n8n reintenta solo
+					// cuando el POST hace timeout, y con `randomUUID()` cada intento creaba otro
+					// documento y volvía a cobrar. Ver `stableIdempotencyKey`.
+					const idempotencyKey =
+						(this.getNodeParameter('idempotencyKey', i, '') as string).trim() ||
+						stableIdempotencyKey(this.getExecutionId(), i, 'sendDocument', documentId);
+
+					const body: Record<string, unknown> = {};
+					if (recipients.length > 0) {
+						body.recipients = recipients;
+					}
+
+					const requestOptions: IHttpRequestOptions = {
+						method: 'POST',
+						url: `${baseUrl}/v3/documents/${documentId}/send`,
+						body,
+						json: true,
+						headers: { 'Idempotency-Key': idempotencyKey },
+					};
+
+					// ── Single call: send the document to its signers (or overridden recipients) ──
+					let sendResponse: IDataObject;
+					try {
+						sendResponse = (await this.helpers.httpRequestWithAuthentication.call(
+							this,
+							'allSignApi',
+							requestOptions,
+						)) as IDataObject;
+					} catch (sendError) {
+						throw new NodeApiError(this.getNode(), sendError as JsonObject, {
+							message: 'Document send failed',
+														description: apiErrorDescription(sendError),
+							itemIndex: i,
+						});
+					}
+
+					returnData.push({ json: sendResponse });
+					continue;
+				}
+
+				if (operation === 'getDocument') {
+					const documentId = (this.getNodeParameter('documentId', i) as string).trim();
+					if (!documentId) {
+						throw new NodeOperationError(this.getNode(), 'Document ID is required', {
+							itemIndex: i,
+						});
+					}
+
+					// Read-only: no body, no Idempotency-Key (doesn't apply to GET).
+					const requestOptions: IHttpRequestOptions = {
+						method: 'GET',
+						url: `${baseUrl}/v3/documents/${documentId}`,
+						json: true,
+					};
+
+					let getResponse: IDataObject;
+					try {
+						getResponse = (await this.helpers.httpRequestWithAuthentication.call(
+							this,
+							'allSignApi',
+							requestOptions,
+						)) as IDataObject;
+					} catch (getError) {
+						throw new NodeApiError(this.getNode(), getError as JsonObject, {
+							message: 'Document retrieval failed',
+														description: apiErrorDescription(getError),
+							itemIndex: i,
+						});
+					}
+
+					returnData.push({ json: getResponse });
+					continue;
+				}
+
+				if (operation === 'listDocuments') {
+					// El UI acota 1..100, pero una EXPRESIÓN (`={{ 500 }}`, `={{ 0 }}`) se
+					// evalúa fuera de esa restricción y llegaba tal cual. La API responde
+					// 422 VALIDATION_ERROR con `field: limit / OUT_OF_RANGE`; se falla aquí
+					// para que el error apunte al parámetro y no a un 422 opaco.
+					const limitRaw = this.getNodeParameter('limit', i, 20) as number;
+					const limit = Number(limitRaw);
+					if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+						throw new NodeOperationError(
+							this.getNode(),
+							`Limit must be a whole number between 1 and 100 (got ${limitRaw}).`,
+							{ itemIndex: i },
+						);
+					}
+					const filters = this.getNodeParameter('filters', i, {}) as IDataObject;
+
+					const qs: IDataObject = { limit };
+					const status = (filters.status as string) ?? '';
+					if (status) {
+						qs.status = status;
+					}
+					const scope = (filters.scope as string) ?? '';
+					if (scope) {
+						qs.scope = scope;
+					}
+					const search = (filters.search as string) ?? '';
+					if (search) {
+						qs.search = search;
+					}
+					const startingAfter = (filters.startingAfter as string) ?? '';
+					if (startingAfter) {
+						qs.startingAfter = startingAfter;
+					}
+					const endingBefore = (filters.endingBefore as string) ?? '';
+					if (endingBefore) {
+						qs.endingBefore = endingBefore;
+					}
+					// El copy del campo dice que son excluyentes y el router los rechaza
+					// juntos (422, `field: endingBefore / INVALID_VALUE`). Mandarlos y dejar
+					// que la API decida convierte un error de configuración en uno de red.
+					if (startingAfter && endingBefore) {
+						throw new NodeOperationError(
+							this.getNode(),
+							'Starting After and Ending Before are mutually exclusive — set only one.',
+							{ itemIndex: i },
+						);
+					}
+					const folderId = (filters.folderId as string) ?? '';
+					if (folderId) {
+						qs.folderId = folderId;
+					}
+					if ((filters.includeTotal as boolean) ?? false) {
+						qs.includeTotal = true;
+					}
+
+					// Read-only: no body, no Idempotency-Key (doesn't apply to GET).
+					const requestOptions: IHttpRequestOptions = {
+						method: 'GET',
+						url: `${baseUrl}/v3/documents`,
+						qs,
+						json: true,
+					};
+
+					let listResponse: IDataObject;
+					try {
+						listResponse = (await this.helpers.httpRequestWithAuthentication.call(
+							this,
+							'allSignApi',
+							requestOptions,
+						)) as IDataObject;
+					} catch (listError) {
+						throw new NodeApiError(this.getNode(), listError as JsonObject, {
+							message: 'Listing documents failed',
+														description: apiErrorDescription(listError),
+							itemIndex: i,
+						});
+					}
+
+					returnData.push({ json: listResponse });
+					continue;
+				}
+
+				if (operation === 'listDocumentSigners') {
+					const documentId = (this.getNodeParameter('documentId', i) as string).trim();
+					if (!documentId) {
+						throw new NodeOperationError(this.getNode(), 'Document ID is required', {
+							itemIndex: i,
+						});
+					}
+
+					// Read-only: no body, no Idempotency-Key (doesn't apply to GET).
+					const requestOptions: IHttpRequestOptions = {
+						method: 'GET',
+						url: `${baseUrl}/v3/documents/${documentId}/signers`,
+						json: true,
+					};
+
+					let signersResponse: IDataObject;
+					try {
+						signersResponse = (await this.helpers.httpRequestWithAuthentication.call(
+							this,
+							'allSignApi',
+							requestOptions,
+						)) as IDataObject;
+					} catch (signersError) {
+						throw new NodeApiError(this.getNode(), signersError as JsonObject, {
+							message: 'Listing signers failed',
+														description: apiErrorDescription(signersError),
+							itemIndex: i,
+						});
+					}
+
+					returnData.push({ json: signersResponse });
+					continue;
+				}
+
+				if (operation === 'getDocumentEvidence') {
+					const documentId = (this.getNodeParameter('documentId', i) as string).trim();
+					if (!documentId) {
+						throw new NodeOperationError(this.getNode(), 'Document ID is required', {
+							itemIndex: i,
+						});
+					}
+
+					// Read-only: no body, no Idempotency-Key (doesn't apply to GET).
+					const requestOptions: IHttpRequestOptions = {
+						method: 'GET',
+						url: `${baseUrl}/v3/documents/${documentId}/evidence`,
+						json: true,
+					};
+
+					let evidenceResponse: IDataObject;
+					try {
+						evidenceResponse = (await this.helpers.httpRequestWithAuthentication.call(
+							this,
+							'allSignApi',
+							requestOptions,
+						)) as IDataObject;
+					} catch (evidenceError) {
+						throw new NodeApiError(this.getNode(), evidenceError as JsonObject, {
+							message: 'Retrieving evidence failed',
+														description: apiErrorDescription(evidenceError),
+							itemIndex: i,
+						});
+					}
+
+					returnData.push({ json: evidenceResponse });
+					continue;
+				}
+
+				if (operation === 'voidDocument') {
+					const documentId = (this.getNodeParameter('documentId', i) as string).trim();
+					if (!documentId) {
+						throw new NodeOperationError(this.getNode(), 'Document ID is required', {
+							itemIndex: i,
+						});
+					}
+
+					const reason = (this.getNodeParameter('reason', i, '') as string).trim();
+					// The API requires Idempotency-Key on every write (400
+
+					// La llave por defecto es DETERMINISTA, no aleatoria: n8n reintenta solo
+					// cuando el POST hace timeout, y con `randomUUID()` cada intento creaba otro
+					// documento y volvía a cobrar. Ver `stableIdempotencyKey`.
+					const idempotencyKey =
+						(this.getNodeParameter('idempotencyKey', i, '') as string).trim() ||
+						stableIdempotencyKey(this.getExecutionId(), i, 'voidDocument', documentId);
+
+					const body: Record<string, unknown> = {};
+					if (reason) {
+						body.reason = reason;
+					}
+
+					const requestOptions: IHttpRequestOptions = {
+						method: 'POST',
+						url: `${baseUrl}/v3/documents/${documentId}/void`,
+						body,
+						json: true,
+						headers: { 'Idempotency-Key': idempotencyKey },
+					};
+
+					let voidResponse: IDataObject;
+					try {
+						voidResponse = (await this.helpers.httpRequestWithAuthentication.call(
+							this,
+							'allSignApi',
+							requestOptions,
+						)) as IDataObject;
+					} catch (voidError) {
+						throw new NodeApiError(this.getNode(), voidError as JsonObject, {
+							message: 'Voiding document failed',
+														description: apiErrorDescription(voidError),
+							itemIndex: i,
+						});
+					}
+
+					returnData.push({ json: voidResponse });
+					continue;
+				}
+
+				if (operation === 'remindSigner') {
+					const documentId = (this.getNodeParameter('documentId', i) as string).trim();
+					if (!documentId) {
+						throw new NodeOperationError(this.getNode(), 'Document ID is required', {
+							itemIndex: i,
+						});
+					}
+
+					const signerId = (this.getNodeParameter('signerId', i) as string).trim();
+					if (!signerId) {
+						throw new NodeOperationError(this.getNode(), 'Signer ID is required', {
+							itemIndex: i,
+						});
+					}
+
+					// The API requires Idempotency-Key on every write (400
+
+					// La llave por defecto es DETERMINISTA, no aleatoria: n8n reintenta solo
+					// cuando el POST hace timeout, y con `randomUUID()` cada intento creaba otro
+					// documento y volvía a cobrar. Ver `stableIdempotencyKey`.
+					const idempotencyKey =
+						(this.getNodeParameter('idempotencyKey', i, '') as string).trim() ||
+						stableIdempotencyKey(this.getExecutionId(), i, 'remindSigner', documentId);
+
+					// The router has no body param for this endpoint — none is sent.
+					const requestOptions: IHttpRequestOptions = {
+						method: 'POST',
+						url: `${baseUrl}/v3/documents/${documentId}/signers/${signerId}/remind`,
+						json: true,
+						headers: { 'Idempotency-Key': idempotencyKey },
+					};
+
+					let remindResponse: IDataObject;
+					try {
+						remindResponse = (await this.helpers.httpRequestWithAuthentication.call(
+							this,
+							'allSignApi',
+							requestOptions,
+						)) as IDataObject;
+					} catch (remindError) {
+						throw new NodeApiError(this.getNode(), remindError as JsonObject, {
+							message: 'Reminding signer failed',
+														description: apiErrorDescription(remindError),
+							itemIndex: i,
+						});
+					}
+
+					returnData.push({ json: remindResponse });
+					continue;
+				}
+
 				const documentName = this.getNodeParameter('documentName', i) as string;
-				const fileSource = this.getNodeParameter('fileSource', i) as string;
+				const source = this.getNodeParameter('source', i, 'file') as string;
 
 				const signersData = this.getNodeParameter('signers.signerValues', i, []) as Array<{
 					name: string;
 					deliveryMethod: string;
 					email?: string;
 					whatsapp?: string;
+					roleName?: string;
 				}>;
 
 				// Configuration (from collapsible collection)
 				const configSettings = this.getNodeParameter('configuration', i, {}) as IDataObject;
-				const sendInvitations = (configSettings.sendInvitations as boolean) ?? true;
 				const expiresAt = (configSettings.expiresAt as string) ?? '';
-				const templateVarsRaw = (configSettings.templateVariables as string) ?? '{}';
+				// Determinista por (ejecución, item): un retry de n8n reusa la llave y la
+				// API replaya en vez de crear un segundo documento. Ver `stableIdempotencyKey`.
+				const idempotencyKey =
+					((configSettings.idempotencyKey as string) ?? '').trim() ||
+					stableIdempotencyKey(this.getExecutionId(), i, 'createDocument');
 
-				// Signature Validations (from collapsible collection)
+				// Signature Validations (from collapsible collection) — v3's curated 6-flag subset
 				const sigValidations = this.getNodeParameter('signatureValidations', i, {}) as IDataObject;
-				const verifyAutografa = (sigValidations.verifyAutografa as boolean) ?? true;
-				const verifyFea = (sigValidations.verifyFea as boolean) ?? false;
-				const verifyEidas = (sigValidations.verifyEidas as boolean) ?? false;
-				const verifyNom151 = (sigValidations.verifyNom151 as boolean) ?? false;
-				const verifyVideo = (sigValidations.verifyVideo as boolean) ?? false;
-				const verifyConfirmName = (sigValidations.verifyConfirmName as boolean) ?? false;
-				const verifyIdentity = (sigValidations.verifyIdentity as boolean) ?? false;
-				const verifyIdScan = (sigValidations.verifyIdScan as boolean) ?? false;
-				const verifyBiometricSelfie = (sigValidations.verifyBiometricSelfie as boolean) ?? false;
-				const verifySynthId = (sigValidations.verifySynthId as boolean) ?? false;
-
-				// Signature fields
-				const fieldsData = this.getNodeParameter(
-					'signatureFields.fieldValues',
-					i,
-					[],
-				) as Array<{
-					participantEmail: string;
-					placementMode: string;
-					x?: number;
-					y?: number;
-					pageNumber?: number;
-					includeInAllPages?: boolean;
-					anchorString?: string;
-					height?: number;
-				}>;
-
-				// Folder (from collapsible collection)
-				const folderOpts = this.getNodeParameter('folderSettings', i, {}) as IDataObject;
-				const folderId = (folderOpts.folderId as string) ?? '';
-				const folderName = (folderOpts.folderName as string) ?? '';
-
-				// Parse template variables JSON
-				let templateVariables: Record<string, string> | undefined;
-				try {
-					const parsed = JSON.parse(templateVarsRaw);
-					if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
-						templateVariables = parsed;
-					}
-				} catch (parseError) {
-					throw new NodeOperationError(
-						this.getNode(),
-						`Invalid JSON in Template Variables: ${(parseError as Error).message}`,
-						{ itemIndex: i },
-					);
-				}
-
-				// Permissions (from collapsible collection)
-				const permSettings = this.getNodeParameter('permissions', i, {}) as IDataObject;
-				const ownerEmail = (permSettings.ownerEmail as string) ?? '';
-				const collaboratorsRaw = (permSettings.collaborators as string) ?? '[]';
-				const isPublicRead = (permSettings.isPublicRead as boolean) ?? false;
-
-				let collaborators: Array<{ email: string; permissions: string[] }> | undefined;
-				try {
-					const parsed = JSON.parse(collaboratorsRaw);
-					if (Array.isArray(parsed) && parsed.length > 0) {
-						collaborators = parsed;
-					}
-				} catch (parseError) {
-					throw new NodeOperationError(
-						this.getNode(),
-						`Invalid JSON in Collaborators: ${(parseError as Error).message}`,
-						{ itemIndex: i },
-					);
-				}
-
-				// Get file as base64
-				let fileBase64: string;
-				let fileName: string;
-
-				if (fileSource === 'url') {
-					let fileUrl = this.getNodeParameter('fileUrl', i) as string;
-
-					// Auto-convert cloud storage sharing links to direct download URLs
-					const gdriveMatch = fileUrl.match(/drive\.google\.com\/file\/d\/([^/]+)/);
-					if (gdriveMatch) {
-						fileUrl = `https://drive.google.com/uc?export=download&id=${gdriveMatch[1]}`;
-					}
-					if (fileUrl.includes('dropbox.com') && fileUrl.includes('dl=0')) {
-						fileUrl = fileUrl.replace('dl=0', 'dl=1');
-					}
-
-					const fileBuffer = Buffer.from(
-						await this.helpers.httpRequest({
-							method: 'GET',
-							url: fileUrl,
-							encoding: 'arraybuffer',
-						}) as Buffer,
-					);
-					fileBase64 = Buffer.from(fileBuffer).toString('base64');
-					const urlParts = fileUrl.split('/');
-					fileName = decodeURIComponent(urlParts[urlParts.length - 1] || 'document.pdf');
-				} else {
-					const binaryProperty = this.getNodeParameter('binaryProperty', i) as string;
-					const binaryData = this.helpers.assertBinaryData(i, binaryProperty);
-					const buffer = await this.helpers.getBinaryDataBuffer(i, binaryProperty);
-					fileBase64 = Buffer.from(buffer).toString('base64');
-					fileName = binaryData.fileName || 'document.pdf';
-				}
-
-				// Sanitize fileName: strip accents (é→e, ñ→n) and remove non-ASCII chars
-				fileName = fileName.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-				// Build signatureValidation — corrected field mappings
 				const signatureValidation: Record<string, boolean> = {
-					autografa: verifyAutografa,
-					FEA: verifyFea,
-					eIDAS: verifyEidas,
-					nom151: verifyNom151,
-					videofirma: verifyVideo,
-					biometric_signature: verifyBiometricSelfie,
-					confirm_name_to_finish: verifyConfirmName,
-					id_scan: verifyIdScan,
+					autografa: (sigValidations.verifyAutografa as boolean) ?? true,
+					nom151: (sigValidations.verifyNom151 as boolean) ?? false,
+					fea: (sigValidations.verifyFea as boolean) ?? false,
+					biometricSignature: (sigValidations.verifyBiometricSelfie as boolean) ?? false,
+					idScan: (sigValidations.verifyIdScan as boolean) ?? false,
+					videofirma: (sigValidations.verifyVideo as boolean) ?? false,
 				};
 
-				if (verifyIdentity) {
-					signatureValidation.ai_verification = verifySynthId || verifyIdScan;
-				}
-
-				// Build participants — each signer uses exactly one delivery method
-				const participants = signersData.map((signer) => {
-					const participant: Record<string, string> = {
-						name: signer.name,
-					};
-
+				// Build signers[] — each signer uses exactly one delivery method
+				const signers = signersData.map((signer) => {
+					const s: Record<string, string> = { name: signer.name };
 					const method = signer.deliveryMethod || 'email';
 
 					if (method === 'email') {
@@ -653,7 +1297,7 @@ export class Allsign implements INodeType {
 								{ itemIndex: i },
 							);
 						}
-						participant.email = email;
+						s.email = email;
 					} else {
 						const whatsapp = (signer.whatsapp || '').trim();
 						if (!whatsapp) {
@@ -663,291 +1307,143 @@ export class Allsign implements INodeType {
 								{ itemIndex: i },
 							);
 						}
-						participant.whatsapp = whatsapp;
+						s.phone = whatsapp;
 					}
 
-					return participant;
+					const roleName = (signer.roleName || '').trim();
+					if (roleName) {
+						s.roleName = roleName;
+					}
+
+					return s;
 				});
 
-				// Build signature fields
-				const fields = fieldsData.map((field) => {
-					if (field.placementMode === 'anchor') {
-						return {
-							participantEmail: field.participantEmail,
-							anchorString: field.anchorString || '',
-							height: field.height || 100,
-						};
-					}
-					const fieldObj: Record<string, unknown> = {
-						participantEmail: field.participantEmail,
-						position: {
-							x: field.x ?? 100,
-							y: field.y ?? 500,
-						},
-						height: field.height || 100,
-					};
-					if (field.includeInAllPages) {
-						fieldObj.includeInAllPages = true;
-					} else {
-						fieldObj.pageNumber = field.pageNumber || 1;
-					}
-					return fieldObj;
-				});
-
-				// Note: User-configured fields and auto-generated fields are both
-				// added AFTER document creation via /signature-fields endpoint,
-				// because the create body cannot contain fields without participants.
-
-				// Build request body — document only, NO participants in create
-				// Participants are added via /add-signer endpoint after creation
-				// to avoid the Temporal workflow 500 error in doc_setup_participants.
-				const hasParticipants = participants.length > 0;
-
-				const configObj: Record<string, unknown> = {
-					sendInvitations: false,
-					startAtStep: 1,
+				// Build the v3 create body — one call, no orchestration
+				const body: Record<string, unknown> = {
+					source,
+					name: documentName,
+					signatureValidation,
 				};
+
+				if (source === 'template') {
+					const templateId = (this.getNodeParameter('templateId', i) as string).trim();
+					if (!templateId) {
+						throw new NodeOperationError(
+							this.getNode(),
+							'Template ID is required when Source is Template',
+							{ itemIndex: i },
+						);
+					}
+					body.templateId = templateId;
+
+					// El campo es `type: 'json'` de n8n, y n8n NO garantiza que llegue como
+					// string: una expresión como `={{ { nombre: $json.name } }}` entrega el
+					// objeto ya evaluado. `JSON.parse` sobre un objeto lo coacciona a
+					// "[object Object]" y truena con «Invalid JSON» — un error que apunta al
+					// usuario cuando el input era válido.
+					const templateValuesRaw = this.getNodeParameter('templateValues', i, '{}') as
+						| string
+						| Record<string, unknown>;
+
+					let parsed: unknown;
+					if (typeof templateValuesRaw === 'string') {
+						try {
+							parsed = JSON.parse(templateValuesRaw || '{}');
+						} catch (parseError) {
+							throw new NodeOperationError(
+								this.getNode(),
+								`Invalid JSON in Template Values: ${(parseError as Error).message}`,
+								{ itemIndex: i },
+							);
+						}
+					} else {
+						parsed = templateValuesRaw;
+					}
+
+					if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+						body.templateValues = parsed;
+					}
+				} else {
+					const fileSource = this.getNodeParameter('fileSource', i) as string;
+
+					let fileBase64: string;
+					let fileName: string;
+
+					if (fileSource === 'url') {
+						let fileUrl = this.getNodeParameter('fileUrl', i) as string;
+
+						// Auto-convert cloud storage sharing links to direct download URLs
+						const gdriveMatch = fileUrl.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+						if (gdriveMatch) {
+							fileUrl = `https://drive.google.com/uc?export=download&id=${gdriveMatch[1]}`;
+						}
+						if (fileUrl.includes('dropbox.com') && fileUrl.includes('dl=0')) {
+							fileUrl = fileUrl.replace('dl=0', 'dl=1');
+						}
+
+						const fileBuffer = Buffer.from(
+							await this.helpers.httpRequest({
+								method: 'GET',
+								url: fileUrl,
+								encoding: 'arraybuffer',
+							}) as Buffer,
+						);
+						fileBase64 = Buffer.from(fileBuffer).toString('base64');
+						fileName = fileNameFromUrl(fileUrl);
+					} else {
+						const binaryProperty = this.getNodeParameter('binaryProperty', i) as string;
+						const binaryData = this.helpers.assertBinaryData(i, binaryProperty);
+						const buffer = await this.helpers.getBinaryDataBuffer(i, binaryProperty);
+						fileBase64 = Buffer.from(buffer).toString('base64');
+						fileName = binaryData.fileName || 'document.pdf';
+					}
+
+					// Sanitize fileName: strip accents (é→e, ñ→n) and remove non-ASCII chars
+					fileName = fileName.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+					const fileType = fileName.toLowerCase().endsWith('.docx') ? 'docx' : 'pdf';
+
+					body.file = {
+						content: fileBase64,
+						fileType,
+						name: fileName,
+					};
+				}
+
+				if (signers.length > 0) {
+					body.signers = signers;
+				}
 
 				if (expiresAt) {
-					configObj.expiresAt = expiresAt;
+					body.expiresAt = expiresAt;
 				}
 
-				const body: Record<string, unknown> = {
-					document: {
-						base64Content: fileBase64,
-						name: fileName.endsWith('.pdf') ? fileName : `${documentName}.pdf`,
-					},
-					signatureValidation,
-					config: configObj,
+				const requestOptions: IHttpRequestOptions = {
+					method: 'POST',
+					url: `${baseUrl}/v3/documents`,
+					body,
+					json: true,
+					headers: { 'Idempotency-Key': idempotencyKey },
 				};
 
-				// Fields are NEVER included in the create body — they are added
-				// via /signature-fields endpoint after signers are registered.
-
-				if (folderId.trim()) {
-					body.folderId = folderId.trim();
-				} else if (folderName.trim()) {
-					body.folderName = folderName.trim();
-				}
-
-				if (templateVariables) {
-					body.placeholders = templateVariables;
-				}
-
-				// Build permissions object
-				const permObj: Record<string, unknown> = {};
-				if (ownerEmail.trim()) permObj.ownerEmail = ownerEmail.trim();
-				if (collaborators) permObj.collaborators = collaborators;
-				if (isPublicRead) permObj.isPublicRead = true;
-				if (Object.keys(permObj).length > 0) {
-					body.permissions = permObj;
-				}
-
-				// ── Step 1: Create the document (no participants) ──────────────
+				// ── Single call: create the document with signers + validation inline ──
 				let createResponse: IDataObject;
 				try {
-					createResponse = (await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
-						method: 'POST',
-						url: `${baseUrl}/v2/documents/`,
-						body,
-						json: true,
-					})) as IDataObject;
+					createResponse = (await this.helpers.httpRequestWithAuthentication.call(
+						this,
+						'allSignApi',
+						requestOptions,
+					)) as IDataObject;
 				} catch (createError) {
 					throw new NodeApiError(this.getNode(), createError as JsonObject, {
 						message: 'Document creation failed',
+												description: apiErrorDescription(createError),
 						itemIndex: i,
 					});
 				}
 
-				const docId = createResponse.id as string;
-
-				// ── Step 2: Add signers via /add-signer endpoint ──────────────
-				if (hasParticipants) {
-					// Resolve inviter email (needed for add-signer and invite-bulk)
-					let inviterEmail = ownerEmail.trim();
-					if (!inviterEmail) {
-						try {
-							const securityInfo = (await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
-								method: 'GET',
-								url: `${baseUrl}/v2/test/security`,
-								json: true,
-							})) as IDataObject;
-							inviterEmail = (securityInfo.authenticatedUser as string) || '';
-						} catch {
-							// Could not resolve inviter email — continue with empty value
-							inviterEmail = '';
-						}
-					}
-
-					for (const p of participants) {
-						const signerBody: Record<string, string> = {
-							invitedByEmail: inviterEmail,
-						};
-						if ((p as Record<string, string>).email) {
-							signerBody.signerEmail = (p as Record<string, string>).email;
-						}
-						if ((p as Record<string, string>).whatsapp) {
-							signerBody.signerPhone = (p as Record<string, string>).whatsapp;
-						}
-
-						try {
-							await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
-								method: 'POST',
-								url: `${baseUrl}/v2/documents/${docId}/add-signer`,
-								body: signerBody,
-								json: true,
-							});
-						} catch (signerError) {
-							const signerErr = signerError as { message?: string; response?: { status?: number } };
-							// 409 = signer already exists, safe to continue
-							if (signerErr.response?.status !== 409) {
-								throw new NodeApiError(this.getNode(), signerError as JsonObject, {
-									message: `Failed to add signer "${p.name}"`,
-									itemIndex: i,
-								});
-							}
-						}
-					}
-
-					// ── Step 3: Add signature fields ─────────────────────────
-					// Add user-configured fields via /signature-fields endpoint
-					// (converting from create-body format to endpoint format)
-					if (fieldsData.length > 0) {
-						for (const f of fields) {
-							const fAny = f as Record<string, unknown>;
-							const pos = fAny.position as Record<string, number> | undefined;
-							const fieldBody: Record<string, unknown> = {
-								signerEmail: fAny.participantEmail,
-								x: pos ? pos.x : 100,
-								y: pos ? pos.y : 500,
-								pageNumber: (fAny.pageNumber as number) || 1,
-								height: (fAny.height as number) || 100,
-								width: 200,
-							};
-							if (fAny.anchorString) {
-								fieldBody.anchorString = fAny.anchorString;
-							}
-							if (fAny.includeInAllPages) {
-								fieldBody.includeInAllPages = true;
-							}
-							try {
-								await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
-									method: 'POST',
-									url: `${baseUrl}/v2/documents/${docId}/signature-fields`,
-									body: fieldBody,
-									json: true,
-								});
-							} catch (fieldError) {
-								throw new NodeApiError(this.getNode(), fieldError as JsonObject, {
-									message: `Failed to create signature field for "${fAny.participantEmail}"`,
-									itemIndex: i,
-								});
-							}
-						}
-					} else {
-						// Auto-generate a default field for EVERY signer
-						for (let idx = 0; idx < signersData.length; idx++) {
-							const signer = signersData[idx];
-							const fieldBody: Record<string, unknown> = {
-								x: 100,
-								y: 500 + (idx * 80),
-								pageNumber: 1,
-								height: 60,
-								width: 200,
-							};
-							if ((signer.deliveryMethod || 'email') === 'email') {
-								fieldBody.signerEmail = (signer.email || '').trim();
-							} else {
-								fieldBody.signerPhone = (signer.whatsapp || '').trim();
-							}
-							try {
-								await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
-									method: 'POST',
-									url: `${baseUrl}/v2/documents/${docId}/signature-fields`,
-									body: fieldBody,
-									json: true,
-								});
-							} catch (fieldError) {
-								throw new NodeApiError(this.getNode(), fieldError as JsonObject, {
-									message: `Failed to create auto-generated signature field for "${signer.name}"`,
-									itemIndex: i,
-								});
-							}
-						}
-					}
-
-					// ── Step 4: Send invitations via invite-bulk ─────────────
-					if (sendInvitations) {
-						// Each participant already has exactly one channel (email or whatsapp)
-						// so we can pass them directly to invite-bulk.
-
-						try {
-							const inviteResponse = (await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
-								method: 'POST',
-								url: `${baseUrl}/v2/documents/${docId}/invite-bulk`,
-								body: {
-									participants,
-									config: {
-										invitedByEmail: inviterEmail,
-									},
-								},
-								json: true,
-							})) as IDataObject;
-
-							createResponse.invitations = inviteResponse;
-						} catch (inviteError) {
-							const invErr = inviteError as {
-								message?: string;
-								response?: { data?: unknown; status?: number };
-							};
-							const detail = invErr.response?.data
-								? JSON.stringify(invErr.response.data)
-								: invErr.message || 'Failed to send invitations';
-							createResponse.invitationError = detail;
-						}
-					}
-				}
-
-				// Build composite request body for output transparency
-
-				// Only include enabled validations
-				const enabledValidations: Record<string, boolean> = {};
-				for (const [key, val] of Object.entries(signatureValidation)) {
-					if (val === true) enabledValidations[key] = true;
-				}
-
-				const base64Preview = fileBase64.substring(0, 80) + '...';
-				const requestBody: Record<string, unknown> = {
-					document: {
-						name: body.document ? (body.document as Record<string, unknown>).name : fileName,
-						base64Content: base64Preview,
-					},
-					participants,
-				};
-
-				if (Object.keys(enabledValidations).length > 0) {
-					requestBody.signatureValidation = enabledValidations;
-				}
-				if (templateVariables) {
-					requestBody.placeholders = templateVariables;
-				}
-				if (folderId.trim()) {
-					requestBody.folderId = folderId.trim();
-				} else if (folderName.trim()) {
-					requestBody.folderName = folderName.trim();
-				}
-				if (Object.keys(permObj).length > 0) {
-					requestBody.permissions = permObj;
-				}
-				if (fields.length > 0) {
-					requestBody.fields = fields;
-				}
-
-				createResponse.requestBody = requestBody;
-				createResponse.documentBase64 = fileBase64;
 				returnData.push({ json: createResponse });
 			} catch (error) {
-				// Re-throw NodeOperationErrors directly (from our inner catch blocks)
+				// Re-throw NodeOperationErrors directly (from our inner validation checks)
 				if (error instanceof NodeOperationError) {
 					if (this.continueOnFail()) {
 						returnData.push({ json: { error: (error as Error).message } });
@@ -962,6 +1458,7 @@ export class Allsign implements INodeType {
 				}
 
 				throw new NodeApiError(this.getNode(), error as JsonObject, {
+										description: apiErrorDescription(error),
 					itemIndex: i,
 				});
 			}
