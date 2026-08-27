@@ -2,7 +2,38 @@
 
 All notable changes to `n8n-nodes-allsign` will be documented in this file.
 
-## [0.6.0] — 2026-07-23
+## [0.6.0] — 2026-08-26
+
+### 🐛 Fixed
+
+- **An n8n retry no longer creates a second document and charges again.** The `Idempotency-Key` was
+  generated with `randomUUID()`, so a `POST` that timed out and was retried by n8n arrived with a
+  fresh key and the API treated it as a brand-new send — a duplicate document, billed again. The key
+  is now derived deterministically from the execution ID, the item index, the operation and the
+  document ID, so a retry replays instead of duplicating. (Passing `executionId + itemIndex`
+  verbatim isn't enough: `POST /v3/documents` validates the header as a UUID, so the parts are
+  hashed into one.)
+- **File name and type are read before the query string.** A Dropbox link (`…/nda.docx?dl=1`) or an
+  S3 presigned URL (`…/file.docx?X-Amz-…`) doesn't end in `.docx`, so the upload was typed as `pdf`.
+  Query and hash are now stripped before the type and name are inferred.
+- **`Template Values` from an expression no longer fails as "invalid JSON".** An expression yields an
+  object; the node handled it as text and rejected the user's correct data.
+- **`Limit` and cursors are validated in the node.** `Limit` is held to 1–100 even when set by an
+  expression (the form already did, expressions bypassed it), and passing `Starting After` together
+  with `Ending Before` now fails in the node with a clear message instead of returning an opaque
+  `422`.
+- **API errors explain themselves.** n8n surfaces only `message` and `description`, so the `detail`,
+  the stable `code` and the `requestId` that support needs to trace a call stayed invisible inside
+  the `problem+json` response body. They are now shown — including when the body arrives unparsed as
+  a string, which happens when the parser doesn't recognize `application/problem+json`. A body that
+  isn't JSON is never echoed raw.
+- **The example NDA workflow no longer leaves a draft nobody ever signs** — it now sends the document
+  after creating it.
+
+### ✅ Verification
+
+97 unit tests, lint and build green. Every fix above is mutation-verified: reverting the fix turns
+its test red.
 
 ### 🔄 Changed
 

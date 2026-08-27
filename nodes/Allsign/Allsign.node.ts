@@ -958,7 +958,7 @@ export class Allsign implements INodeType {
 					} catch (sendError) {
 						throw new NodeApiError(this.getNode(), sendError as JsonObject, {
 							message: 'Document send failed',
-														description: apiErrorDescription(sendError),
+							description: apiErrorDescription(sendError),
 							itemIndex: i,
 						});
 					}
@@ -992,7 +992,7 @@ export class Allsign implements INodeType {
 					} catch (getError) {
 						throw new NodeApiError(this.getNode(), getError as JsonObject, {
 							message: 'Document retrieval failed',
-														description: apiErrorDescription(getError),
+							description: apiErrorDescription(getError),
 							itemIndex: i,
 						});
 					}
@@ -1074,7 +1074,7 @@ export class Allsign implements INodeType {
 					} catch (listError) {
 						throw new NodeApiError(this.getNode(), listError as JsonObject, {
 							message: 'Listing documents failed',
-														description: apiErrorDescription(listError),
+							description: apiErrorDescription(listError),
 							itemIndex: i,
 						});
 					}
@@ -1108,7 +1108,7 @@ export class Allsign implements INodeType {
 					} catch (signersError) {
 						throw new NodeApiError(this.getNode(), signersError as JsonObject, {
 							message: 'Listing signers failed',
-														description: apiErrorDescription(signersError),
+							description: apiErrorDescription(signersError),
 							itemIndex: i,
 						});
 					}
@@ -1142,7 +1142,7 @@ export class Allsign implements INodeType {
 					} catch (evidenceError) {
 						throw new NodeApiError(this.getNode(), evidenceError as JsonObject, {
 							message: 'Retrieving evidence failed',
-														description: apiErrorDescription(evidenceError),
+							description: apiErrorDescription(evidenceError),
 							itemIndex: i,
 						});
 					}
@@ -1192,7 +1192,7 @@ export class Allsign implements INodeType {
 					} catch (voidError) {
 						throw new NodeApiError(this.getNode(), voidError as JsonObject, {
 							message: 'Voiding document failed',
-														description: apiErrorDescription(voidError),
+							description: apiErrorDescription(voidError),
 							itemIndex: i,
 						});
 					}
@@ -1243,7 +1243,7 @@ export class Allsign implements INodeType {
 					} catch (remindError) {
 						throw new NodeApiError(this.getNode(), remindError as JsonObject, {
 							message: 'Reminding signer failed',
-														description: apiErrorDescription(remindError),
+							description: apiErrorDescription(remindError),
 							itemIndex: i,
 						});
 					}
@@ -1436,7 +1436,7 @@ export class Allsign implements INodeType {
 				} catch (createError) {
 					throw new NodeApiError(this.getNode(), createError as JsonObject, {
 						message: 'Document creation failed',
-												description: apiErrorDescription(createError),
+						description: apiErrorDescription(createError),
 						itemIndex: i,
 					});
 				}
@@ -1458,7 +1458,7 @@ export class Allsign implements INodeType {
 				}
 
 				throw new NodeApiError(this.getNode(), error as JsonObject, {
-										description: apiErrorDescription(error),
+					description: apiErrorDescription(error),
 					itemIndex: i,
 				});
 			}
