@@ -1,6 +1,7 @@
 import type { IExecuteFunctions } from 'n8n-workflow';
 import { Allsign } from './Allsign.node';
 import exampleWorkflow from '../../examples/NDA_Automation_AllSign_Workflow.json';
+import pkg from '../../package.json';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type NodeProp = Record<string, any>;
@@ -1812,6 +1813,57 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			const built = [...expression.matchAll(/([a-z0-9_]+):\s*\$json\[/g)].map((m) => m[1]);
 
 			expect(built.sort()).toEqual([...VARIABLES_DE_LA_PLANTILLA].sort());
+		});
+	});
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// Lo que pide la verificación de n8n antes de publicar
+	// ─────────────────────────────────────────────────────────────────────────
+	describe('Listo para publicar', () => {
+		it('declara la versión de Node que necesita', () => {
+			// Las guidelines de verificación lo piden, y sin esto npm no avisa a
+			// nadie que en Node viejo el nodo no corre.
+			expect(pkg.engines?.node).toBeDefined();
+		});
+
+		it('no promete eIDAS en los keywords', () => {
+			// El producto hace NOM-151 y FEA (México). eIDAS es el marco europeo
+			// y no lo cubre: anunciarlo en la búsqueda de npm es traer al
+			// integrador equivocado.
+			expect(pkg.keywords).not.toContain('eidas');
+		});
+
+		it('cada salida dice de qué item de entrada vino', async () => {
+			// `pairedItem` es lo que deja a n8n rastrear una salida hasta su
+			// entrada. Sin él, en un flujo de N items el usuario no puede saber
+			// cuál documento corresponde a cuál fila.
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ id: 'doc_pair' });
+
+			const fn = getMockExecuteFunctions({
+				resource: 'document',
+				operation: 'sendDocument',
+				documentId: 'doc_pair',
+			});
+
+			const result = await node.execute.call(fn);
+			expect(result[0][0].pairedItem).toEqual({ item: 0 });
+		});
+
+		it('el documentId viaja escapado en la URL', async () => {
+			// El id va en el path. Un id con caracteres raros —o un usuario que
+			// pega " doc_1/../otro"— rompía la ruta en silencio.
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ id: 'ok' });
+
+			const fn = getMockExecuteFunctions({
+				resource: 'document',
+				operation: 'getDocument',
+				documentId: 'doc_a/b',
+			});
+
+			await node.execute.call(fn);
+			const url = mockHttpRequestWithAuthentication.mock.calls[0][1].url as string;
+			expect(url).toContain('doc_a%2Fb');
+			expect(url).not.toContain('doc_a/b');
 		});
 	});
 
