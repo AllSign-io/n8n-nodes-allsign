@@ -1,7 +1,7 @@
 {
 	"name": "n8n-nodes-allsign",
 	"version": "0.6.0",
-	"description": "n8n integration for AllSign — Electronic signature, document management, biometric signing. Supports FEA, NOM-151, eIDAS, and WhatsApp delivery.",
+	"description": "n8n integration for AllSign — Electronic signature, document management, biometric signing. Supports FEA, NOM-151, and WhatsApp delivery.",
 	"license": "MIT",
 	"engines": {
 		"node": ">=22"

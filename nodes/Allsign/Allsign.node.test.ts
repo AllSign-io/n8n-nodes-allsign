@@ -1833,6 +1833,12 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			expect(pkg.keywords).not.toContain('eidas');
 		});
 
+		it('tampoco lo promete en el description', () => {
+			// El description es lo que npm pinta bajo el nombre del paquete y lo
+			// que lee el catálogo de nodos de n8n — se ve más que los keywords.
+			expect(pkg.description).not.toMatch(/eidas/i);
+		});
+
 		it('cada salida dice de qué item de entrada vino', async () => {
 			// `pairedItem` es lo que deja a n8n rastrear una salida hasta su
 			// entrada. Sin él, en un flujo de N items el usuario no puede saber

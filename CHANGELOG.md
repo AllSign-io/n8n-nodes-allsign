@@ -29,10 +29,24 @@ All notable changes to `n8n-nodes-allsign` will be documented in this file.
   isn't JSON is never echoed raw.
 - **The example NDA workflow no longer leaves a draft nobody ever signs** — it now sends the document
   after creating it.
+- **Every output says which input item it came from.** Outputs carried no `pairedItem`, so in a run
+  over N items n8n couldn't trace a result back to its row — including the error outputs produced
+  under "Continue on Fail". All eight operations now set it.
+- **Document and signer IDs are escaped into the URL.** They are interpolated into the path, so an
+  id carrying a `/` or any reserved character silently produced a different route. Both are now
+  `encodeURIComponent`-escaped.
+- **The package no longer advertises eIDAS.** AllSign covers NOM-151 and FEA (Mexico); eIDAS is the
+  European framework and isn't supported. It was listed in the npm keywords and in the package
+  description — the line npm renders under the package name — which brought the wrong integrator.
+
+### 🔄 Changed
+
+- **`engines.node` is declared (`>=22`).** Required by the n8n verification guidelines, and without
+  it npm warns nobody that the node won't run on an older Node.
 
 ### ✅ Verification
 
-97 unit tests, lint and build green. Every fix above is mutation-verified: reverting the fix turns
+102 unit tests, lint and build green. Every fix above is mutation-verified: reverting the fix turns
 its test red.
 
 ### 🔄 Changed
