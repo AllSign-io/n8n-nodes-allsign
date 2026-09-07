@@ -941,7 +941,7 @@ export class Allsign implements INodeType {
 
 					const requestOptions: IHttpRequestOptions = {
 						method: 'POST',
-						url: `${baseUrl}/v3/documents/${documentId}/send`,
+						url: `${baseUrl}/v3/documents/${encodeURIComponent(documentId)}/send`,
 						body,
 						json: true,
 						headers: { 'Idempotency-Key': idempotencyKey },
@@ -963,7 +963,7 @@ export class Allsign implements INodeType {
 						});
 					}
 
-					returnData.push({ json: sendResponse });
+					returnData.push({ json: sendResponse, pairedItem: { item: i } });
 					continue;
 				}
 
@@ -978,7 +978,7 @@ export class Allsign implements INodeType {
 					// Read-only: no body, no Idempotency-Key (doesn't apply to GET).
 					const requestOptions: IHttpRequestOptions = {
 						method: 'GET',
-						url: `${baseUrl}/v3/documents/${documentId}`,
+						url: `${baseUrl}/v3/documents/${encodeURIComponent(documentId)}`,
 						json: true,
 					};
 
@@ -997,7 +997,7 @@ export class Allsign implements INodeType {
 						});
 					}
 
-					returnData.push({ json: getResponse });
+					returnData.push({ json: getResponse, pairedItem: { item: i } });
 					continue;
 				}
 
@@ -1079,7 +1079,7 @@ export class Allsign implements INodeType {
 						});
 					}
 
-					returnData.push({ json: listResponse });
+					returnData.push({ json: listResponse, pairedItem: { item: i } });
 					continue;
 				}
 
@@ -1094,7 +1094,7 @@ export class Allsign implements INodeType {
 					// Read-only: no body, no Idempotency-Key (doesn't apply to GET).
 					const requestOptions: IHttpRequestOptions = {
 						method: 'GET',
-						url: `${baseUrl}/v3/documents/${documentId}/signers`,
+						url: `${baseUrl}/v3/documents/${encodeURIComponent(documentId)}/signers`,
 						json: true,
 					};
 
@@ -1113,7 +1113,7 @@ export class Allsign implements INodeType {
 						});
 					}
 
-					returnData.push({ json: signersResponse });
+					returnData.push({ json: signersResponse, pairedItem: { item: i } });
 					continue;
 				}
 
@@ -1128,7 +1128,7 @@ export class Allsign implements INodeType {
 					// Read-only: no body, no Idempotency-Key (doesn't apply to GET).
 					const requestOptions: IHttpRequestOptions = {
 						method: 'GET',
-						url: `${baseUrl}/v3/documents/${documentId}/evidence`,
+						url: `${baseUrl}/v3/documents/${encodeURIComponent(documentId)}/evidence`,
 						json: true,
 					};
 
@@ -1147,7 +1147,7 @@ export class Allsign implements INodeType {
 						});
 					}
 
-					returnData.push({ json: evidenceResponse });
+					returnData.push({ json: evidenceResponse, pairedItem: { item: i } });
 					continue;
 				}
 
@@ -1176,7 +1176,7 @@ export class Allsign implements INodeType {
 
 					const requestOptions: IHttpRequestOptions = {
 						method: 'POST',
-						url: `${baseUrl}/v3/documents/${documentId}/void`,
+						url: `${baseUrl}/v3/documents/${encodeURIComponent(documentId)}/void`,
 						body,
 						json: true,
 						headers: { 'Idempotency-Key': idempotencyKey },
@@ -1197,7 +1197,7 @@ export class Allsign implements INodeType {
 						});
 					}
 
-					returnData.push({ json: voidResponse });
+					returnData.push({ json: voidResponse, pairedItem: { item: i } });
 					continue;
 				}
 
@@ -1228,7 +1228,7 @@ export class Allsign implements INodeType {
 					// The router has no body param for this endpoint — none is sent.
 					const requestOptions: IHttpRequestOptions = {
 						method: 'POST',
-						url: `${baseUrl}/v3/documents/${documentId}/signers/${signerId}/remind`,
+						url: `${baseUrl}/v3/documents/${encodeURIComponent(documentId)}/signers/${encodeURIComponent(signerId)}/remind`,
 						json: true,
 						headers: { 'Idempotency-Key': idempotencyKey },
 					};
@@ -1248,7 +1248,7 @@ export class Allsign implements INodeType {
 						});
 					}
 
-					returnData.push({ json: remindResponse });
+					returnData.push({ json: remindResponse, pairedItem: { item: i } });
 					continue;
 				}
 
@@ -1441,19 +1441,25 @@ export class Allsign implements INodeType {
 					});
 				}
 
-				returnData.push({ json: createResponse });
+				returnData.push({ json: createResponse, pairedItem: { item: i } });
 			} catch (error) {
 				// Re-throw NodeOperationErrors directly (from our inner validation checks)
 				if (error instanceof NodeOperationError) {
 					if (this.continueOnFail()) {
-						returnData.push({ json: { error: (error as Error).message } });
+						returnData.push({
+						json: { error: (error as Error).message },
+						pairedItem: { item: i },
+					});
 						continue;
 					}
 					throw error;
 				}
 
 				if (this.continueOnFail()) {
-					returnData.push({ json: { error: (error as Error).message } });
+					returnData.push({
+						json: { error: (error as Error).message },
+						pairedItem: { item: i },
+					});
 					continue;
 				}
 
