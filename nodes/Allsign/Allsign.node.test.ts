@@ -1,4 +1,8 @@
 import type { IExecuteFunctions } from 'n8n-workflow';
+// El MISMO predicado que usa n8n en `convertN8nRequestToAxios` para decidir si
+// asigna el cuerpo a axios. Se importa en vez de reimplementarse para que, si n8n
+// cambia la regla, estos tests se enteren.
+import { isObjectEmpty } from 'n8n-workflow';
 import { Allsign } from './Allsign.node';
 import exampleWorkflow from '../../examples/NDA_Automation_AllSign_Workflow.json';
 import pkg from '../../package.json';
@@ -805,7 +809,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 	// Send Document — v3 POST /documents/{documentId}/send
 	// ----------------------------------------------------------
 	describe('Send Document', () => {
-		it('should POST to /v3/documents/{documentId}/send with no body when no recipients are given', async () => {
+		it('should POST to /v3/documents/{documentId}/send with recipients: null when none are given', async () => {
 			mockHttpRequestWithAuthentication.mockResolvedValueOnce({
 				id: 'doc_123',
 				object: 'document',
@@ -826,14 +830,39 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			const call = mockHttpRequestWithAuthentication.mock.calls[0][1];
 			expect(call.method).toBe('POST');
 			expect(call.url).toBe('https://api.allsign.io/v3/documents/doc_123/send');
-			expect(call.body).toEqual({});
-			expect(call.body.recipients).toBeUndefined();
+			expect(call.body).toEqual({ recipients: null });
 			// The API requires Idempotency-Key on every write — auto-generated when omitted.
 			expect(call.headers['Idempotency-Key']).toMatch(UUID_V4_REGEX);
 
 			expect(result[0][0].json).toEqual(
 				expect.objectContaining({ id: 'doc_123', status: 'awaiting_signatures' }),
 			);
+		});
+
+		// Regresión del 2026-09-07, encontrada probando contra producción.
+		//
+		// El nodo mandaba `{}` cuando no había Recipients. n8n descarta los cuerpos
+		// vacíos con este mismo `isObjectEmpty`, así que la petición salía sin cuerpo
+		// y `send_document` —que declara `body: SendRequest` obligatorio— respondía
+		// 422 antes de entrar al endpoint. "Enviar a los firmantes ya adjuntos", el
+		// camino normal, no funcionaba desde n8n.
+		//
+		// Los tests no lo vieron porque afirmaban `body === {}` como correcto, y el
+		// smoke tampoco: sustituye el helper de n8n por un `fetch` que sí serializa
+		// `{}`. El bug vive en la capa de n8n, que ninguno de los dos ejercitaba.
+		it('never sends an empty body: n8n would drop it and the API answers 422', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ id: 'doc_vacio' });
+
+			const fn = getMockExecuteFunctions({
+				operation: 'sendDocument',
+				documentId: 'doc_vacio',
+				'recipients.recipientValues': [],
+			});
+
+			await node.execute.call(fn);
+			expect(
+				isObjectEmpty(mockHttpRequestWithAuthentication.mock.calls[0][1].body),
+			).toBe(false);
 		});
 
 		it('should include recipients[] (camelCase email/phone/name) when provided', async () => {
@@ -1250,7 +1279,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			const call = mockHttpRequestWithAuthentication.mock.calls[0][1];
 			expect(call.method).toBe('POST');
 			expect(call.url).toBe('https://api.allsign.io/v3/documents/doc_123/void');
-			expect(call.body).toEqual({});
+			expect(call.body).toEqual({ reason: null });
 			expect(call.headers['Idempotency-Key']).toMatch(UUID_V4_REGEX);
 
 			expect(result[0][0].json).toEqual(expect.objectContaining({ status: 'voided' }));
@@ -1268,6 +1297,21 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			await node.execute.call(fn);
 			const body = mockHttpRequestWithAuthentication.mock.calls[0][1].body;
 			expect(body).toEqual({ reason: 'Contract superseded' });
+		});
+
+		// Ver el bloque gemelo en "Send Document" — mismo modo de fallo, mismo 422.
+		it('never sends an empty body: n8n would drop it and the API answers 422', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ id: 'doc_vacio' });
+
+			const fn = getMockExecuteFunctions({
+				operation: 'voidDocument',
+				documentId: 'doc_vacio',
+			});
+
+			await node.execute.call(fn);
+			expect(
+				isObjectEmpty(mockHttpRequestWithAuthentication.mock.calls[0][1].body),
+			).toBe(false);
 		});
 
 		it('should respect a user-provided Idempotency Key', async () => {
