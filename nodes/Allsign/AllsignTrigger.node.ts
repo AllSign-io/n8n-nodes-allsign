@@ -325,7 +325,7 @@ export class AllsignTrigger implements INodeType {
 		if (!staticData.secret) {
 			// Sin secreto no se puede verificar nada, y correr el workflow con un
 			// cuerpo sin verificar es justo lo que este nodo existe para evitar.
-			return refuse('this endpoint has no stored signing secret; re-activate the workflow');
+			return refuse(this);
 		}
 
 		const verdict = verifyStandardWebhook(
@@ -341,7 +341,7 @@ export class AllsignTrigger implements INodeType {
 			// 401 sin detalle: quien manda una firma inválida no merece pistas sobre
 			// POR QUÉ no cuadró. El motivo queda del lado de AllSign, en el historial
 			// de entregas del endpoint (`GET /v3/webhooks/{id}/deliveries`).
-			return refuse(verdict.reason);
+			return refuse(this);
 		}
 
 		// `webhook-id` es ESTABLE entre reintentos: la API reintenta con el mismo id
@@ -350,7 +350,10 @@ export class AllsignTrigger implements INodeType {
 		const eventId = headers['webhook-id'] as string;
 		const seen = staticData.seenEventIds ?? [];
 		if (seen.includes(eventId)) {
-			return { webhookResponse: { status: 'duplicate ignored' }, workflowData: [] };
+			// 200 sin datos: la entrega SÍ se acepta —no queremos que la API siga
+			// reintentando— pero el workflow no corre. Es el mismo `{}` con el que
+			// los triggers de n8n dicen "recibido, no me toca".
+			return {};
 		}
 		staticData.seenEventIds = [...seen, eventId].slice(-SEEN_EVENT_IDS_KEPT);
 
@@ -360,13 +363,20 @@ export class AllsignTrigger implements INodeType {
 	}
 }
 
-/** Rechaza la entrega con 401 y sin correr el workflow. */
-function refuse(reason: string): IWebhookResponseData {
-	return {
-		webhookResponse: { status: 401, body: { error: 'invalid signature' }, reason },
-		noWebhookResponse: false,
-		workflowData: [],
-	};
+/**
+ * Rechaza la entrega con un 401 de verdad, sin correr el workflow.
+ *
+ * Se escribe en la respuesta de Express a mano porque `webhookResponse` es el
+ * CUERPO, no el código: devolver `{ status: 401 }` ahí responde **200** con ese
+ * objeto de cuerpo. AllSign lo daría por entregado, no reintentaría, y el
+ * rechazo no aparecería por ningún lado. `noWebhookResponse: true` le dice a
+ * n8n que la respuesta ya se envió.
+ *
+ * Mismo patrón que los triggers de Stripe y Slack.
+ */
+function refuse(context: IWebhookFunctions): IWebhookResponseData {
+	context.getResponseObject().status(401).send('Unauthorized').end();
+	return { noWebhookResponse: true };
 }
 
 /** La base de la API que trae la credencial, sin diagonal final. */

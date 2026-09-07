@@ -179,6 +179,92 @@ describe('AllSign Trigger', () => {
 		});
 	});
 
+	describe('La entrega que llega (webhook)', () => {
+		const now = 1_757_282_000;
+
+		/** Un contexto de n8n con lo mínimo que toca el nodo. */
+		function contextoDeEntrega(
+			opciones: { body?: string; signature?: string; secret?: string; seenEventIds?: string[] } = {},
+		) {
+			const body = opciones.body ?? BODY;
+			const staticData = {
+				webhookId: 'whe_1',
+				secret: opciones.secret ?? SECRET,
+				seenEventIds: opciones.seenEventIds ?? [],
+			};
+			const response = {
+				status: jest.fn().mockReturnThis(),
+				send: jest.fn().mockReturnThis(),
+				end: jest.fn().mockReturnThis(),
+			};
+			return {
+				staticData,
+				response,
+				context: {
+					getRequestObject: () => ({ rawBody: Buffer.from(body, 'utf8') }),
+					getResponseObject: () => response,
+					getHeaderData: () => ({
+						'webhook-id': EVENT_ID,
+						'webhook-timestamp': String(now),
+						'webhook-signature': opciones.signature ?? sign(EVENT_ID, now, body),
+					}),
+					getWorkflowStaticData: () => staticData,
+					getBodyData: () => JSON.parse(body),
+					helpers: { returnJsonArray: (d: unknown) => [{ json: d }] },
+				},
+			};
+		}
+
+		beforeAll(() => jest.useFakeTimers().setSystemTime(now * 1000));
+		afterAll(() => jest.useRealTimers());
+
+		it('corre el workflow con el evento cuando la firma cuadra', async () => {
+			const { context } = contextoDeEntrega();
+			const result = await new AllsignTrigger().webhook.call(context as never);
+
+			expect(result.workflowData?.[0]?.[0].json).toEqual(
+				expect.objectContaining({ eventType: 'signer.signed', eventId: EVENT_ID }),
+			);
+		});
+
+		// Regresión: `webhookResponse` es el CUERPO, no el código HTTP. Devolver
+		// `{ status: 401 }` ahí responde 200 con ese objeto de cuerpo — AllSign lo
+		// daría por entregado, no reintentaría, y el rechazo no aparecería en
+		// `/deliveries`. El 401 tiene que escribirse en la respuesta de Express.
+		it('responde 401 DE VERDAD cuando la firma no cuadra, y no corre el workflow', async () => {
+			const { context, response } = contextoDeEntrega({ signature: 'v1,firmaInventada' });
+			const result = await new AllsignTrigger().webhook.call(context as never);
+
+			expect(response.status).toHaveBeenCalledWith(401);
+			expect(result).toEqual({ noWebhookResponse: true });
+			expect(result.workflowData).toBeUndefined();
+		});
+
+		it('tampoco corre el workflow si no hay secreto guardado', async () => {
+			const { context, response } = contextoDeEntrega({ secret: '' });
+			const result = await new AllsignTrigger().webhook.call(context as never);
+
+			expect(response.status).toHaveBeenCalledWith(401);
+			expect(result.workflowData).toBeUndefined();
+		});
+
+		it('ignora un reintento del mismo evento sin volver a correr el workflow', async () => {
+			// La API reintenta con el MISMO webhook-id. Sin deduplicar, un reintento
+			// —porque n8n tardó en contestar— manda el correo dos veces.
+			const { context } = contextoDeEntrega({ seenEventIds: [EVENT_ID] });
+			const result = await new AllsignTrigger().webhook.call(context as never);
+
+			expect(result).toEqual({});
+		});
+
+		it('recuerda el evento para que el siguiente reintento ya sea duplicado', async () => {
+			const { context, staticData } = contextoDeEntrega();
+			await new AllsignTrigger().webhook.call(context as never);
+
+			expect(staticData.seenEventIds).toContain(EVENT_ID);
+		});
+	});
+
 	describe('Descripción del nodo', () => {
 		const node = new AllsignTrigger();
 
