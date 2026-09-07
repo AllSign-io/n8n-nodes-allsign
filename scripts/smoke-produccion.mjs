@@ -26,9 +26,37 @@ const require = createRequire(import.meta.url);
 
 const marcaGlobal = Date.now().toString(36);
 const BASE_URL = process.env.API_URL ?? 'https://api.allsign.io';
-const API_KEY =
-    process.env.API_KEY ??
-    readFileSync(join(homedir(), '.allsign-secrets/allsign-test-key'), 'utf8').trim();
+const RUTA_KEY = join(homedir(), '.allsign-secrets/allsign-test-key');
+
+function leerKey() {
+    if (process.env.API_KEY) return process.env.API_KEY.trim();
+    try {
+        return readFileSync(RUTA_KEY, 'utf8').trim();
+    } catch {
+        console.error(`\nFalta la API key. El smoke no sabe con qué autenticarse.\n`);
+        console.error(`Contra producción: crea una key de trial en dashboard.allsign.io → API Trial,`);
+        console.error(`cópiala y guárdala así:\n`);
+        console.error(`  pbpaste > ${RUTA_KEY} && chmod 600 ${RUTA_KEY}\n`);
+        console.error(`Contra dev, con la key que ya tienes:\n`);
+        console.error(`  API_URL=https://api.dev.allsign.io API_KEY=$(cat ~/.allsign-secrets/n8n-dev-key) node scripts/smoke-produccion.mjs\n`);
+        process.exit(1);
+    }
+}
+
+const API_KEY = leerKey();
+
+// El ambiente de la key y la URL tienen que cuadrar: una key `dev` contra
+// producción da 401 y parece un problema de permisos cuando es de ambiente.
+if (API_KEY.startsWith('allsign_dev_sk_') && !BASE_URL.includes('dev.')) {
+    console.error(`\nLa key es de dev y la URL es ${BASE_URL}. No se van a entender.`);
+    console.error(`Agrega API_URL=https://api.dev.allsign.io, o usa una key de trial.\n`);
+    process.exit(1);
+}
+if (API_KEY.startsWith('allsign_live_sk_')) {
+    console.error(`\nEsa es una key LIVE: cada documento cobra créditos de verdad.`);
+    console.error(`El smoke corre con key de trial (allsign_test_sk_) o de dev.\n`);
+    process.exit(1);
+}
 
 const { Allsign } = require('../dist/nodes/Allsign/Allsign.node.js');
 const node = new Allsign();
