@@ -934,10 +934,16 @@ export class Allsign implements INodeType {
 						(this.getNodeParameter('idempotencyKey', i, '') as string).trim() ||
 						stableIdempotencyKey(this.getExecutionId(), i, 'sendDocument', documentId);
 
-					const body: Record<string, unknown> = {};
-					if (recipients.length > 0) {
-						body.recipients = recipients;
-					}
+					// `null` explícito, NO un objeto vacío. n8n descarta los cuerpos vacíos
+					// (`isObjectEmpty` en `convertN8nRequestToAxios`): con `{}` la petición
+					// salía SIN cuerpo y el endpoint, que declara `body: SendRequest`
+					// obligatorio, respondía 422 antes de entrar — o sea que "enviar sin
+					// Recipients", el caso normal, nunca funcionó desde n8n. Para la API
+					// `null` y omitido significan lo mismo (`if body.recipients is not None`
+					// → usa los firmantes ya adjuntos), así que el contrato no cambia.
+					const body: Record<string, unknown> = {
+						recipients: recipients.length > 0 ? recipients : null,
+					};
 
 					const requestOptions: IHttpRequestOptions = {
 						method: 'POST',
@@ -1169,10 +1175,10 @@ export class Allsign implements INodeType {
 						(this.getNodeParameter('idempotencyKey', i, '') as string).trim() ||
 						stableIdempotencyKey(this.getExecutionId(), i, 'voidDocument', documentId);
 
-					const body: Record<string, unknown> = {};
-					if (reason) {
-						body.reason = reason;
-					}
+					// `null` explícito por lo mismo que en `sendDocument`: `void_document`
+					// declara `body: VoidRequest` obligatorio y n8n no manda los cuerpos
+					// vacíos, así que anular sin Reason daba 422.
+					const body: Record<string, unknown> = { reason: reason || null };
 
 					const requestOptions: IHttpRequestOptions = {
 						method: 'POST',
