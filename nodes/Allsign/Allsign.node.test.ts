@@ -4,6 +4,7 @@ import type { IExecuteFunctions } from 'n8n-workflow';
 // cambia la regla, estos tests se enteren.
 import { isObjectEmpty } from 'n8n-workflow';
 import { Allsign } from './Allsign.node';
+import { AllSignApi } from '../../credentials/AllSignApi.credentials';
 import exampleWorkflow from '../../examples/NDA_Automation_AllSign_Workflow.json';
 import pkg from '../../package.json';
 
@@ -1864,6 +1865,26 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 	// Lo que pide la verificación de n8n antes de publicar
 	// ─────────────────────────────────────────────────────────────────────────
 	describe('Listo para publicar', () => {
+		// `dashboard.allsign.io` dejó de servir y hoy responde 503. La landing y el
+		// dashboard son la MISMA app Next.js, así que la ruta buena es `allsign.io`
+		// —por eso el login es `/signin` relativo—. El costo no es parejo: la
+		// descripción de la credencial es lo PRIMERO que lee alguien que acaba de
+		// instalar el nodo, y mandarlo a un 503 en su primer minuto es perderlo ahí.
+		//
+		// Se comprueba por importación y no leyendo archivos: el linter de n8n
+		// prohíbe `node:fs` en todo el repo (n8n Cloud rechaza los nodos con
+		// dependencias). Por eso quedan fuera README.md y docs/, que no se pueden
+		// importar — ahí la protección sigue siendo humana.
+		it('la descripción de la credencial no manda al dominio muerto', () => {
+			const apiKey = new AllSignApi().properties.find((p) => p.name === 'apiKey');
+			expect(apiKey?.description).toContain('allsign.io/developers/api-keys');
+			expect(apiKey?.description).not.toMatch(/dashboard\.allsign\.io/);
+		});
+
+		it('el sticky del workflow de ejemplo tampoco', () => {
+			expect(JSON.stringify(exampleWorkflow)).not.toMatch(/dashboard\.allsign\.io/);
+		});
+
 		it('declara la versión de Node que necesita', () => {
 			// Las guidelines de verificación lo piden, y sin esto npm no avisa a
 			// nadie que en Node viejo el nodo no corre.
