@@ -131,6 +131,26 @@ Manually resend the signing invitation to one signer who hasn't completed yet. R
 
 ---
 
+## ⚡ AllSign Trigger
+
+Starts a workflow when something happens in AllSign — a document is sent, completed, signed by someone, expired… Without it a workflow only goes one way (create and send); with it, it can react when the signature actually lands.
+
+| Field | Description |
+|:---|:---|
+| **Events** | Which events start the workflow. The list is loaded live from your account (`GET /v3/webhooks/events`), so it never goes out of date |
+| **Endpoint Description** (optional) | A label shown next to the URL in the AllSign dashboard, to tell several n8n workflows apart |
+
+How it works:
+
+- **Activating** the workflow registers a webhook endpoint in AllSign pointing at n8n; **deactivating** it deletes that endpoint. Nothing to configure in the dashboard.
+- Every delivery is **signature-verified** ([Standard Webhooks](https://www.standardwebhooks.com/)) with the secret AllSign hands over at registration. A delivery with a bad or missing signature is answered `401` and never reaches your workflow; AllSign records it under the endpoint's deliveries.
+- A delivery AllSign retries (same event id) is acknowledged but the workflow does not run twice.
+- If n8n restarts, the existing endpoint is reused — no duplicates. If someone deletes it from the dashboard, the node registers a fresh one on next activation.
+
+> **Your API key needs three scopes** for the Trigger: `webhook:read`, `webhook:write` **and `webhook:delete`**. Without `webhook:delete` the node can register the endpoint but not remove it when you deactivate the workflow, and orphan endpoints pile up in your account. Edit the key's scopes in the AllSign dashboard under **Developers → API keys**.
+
+---
+
 ## 🚀 Getting Started
 
 ### 1. Configure Credentials
