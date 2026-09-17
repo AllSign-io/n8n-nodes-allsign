@@ -25,10 +25,22 @@ rm -rf "$HOME/.n8n/custom/node_modules/n8n-nodes-allsign" 2>/dev/null
 N8N_NODES="$HOME/.n8n/nodes"
 LINK="$N8N_NODES/node_modules/n8n-nodes-allsign"
 mkdir -p "$N8N_NODES/node_modules"
-if [ ! -L "$LINK" ]; then
-    ln -sf "$PROJECT_DIR" "$LINK"
+# Si hay algo que NO sea nuestro symlink (p.ej. un directorio real que dejó
+# `npm install n8n-nodes-allsign`), se quita: si no, `ln -sf` mete el enlace
+# ADENTRO del directorio y n8n sigue cargando la versión vieja de npm.
+if [ -e "$LINK" ] || [ -L "$LINK" ]; then
+    if [ "$(readlink "$LINK")" != "$PROJECT_DIR" ]; then
+        echo "⚠️  $LINK no apunta a este repo — se reemplaza"
+        rm -rf "$LINK"
+    fi
 fi
-echo "✓ Node linked"
+[ -L "$LINK" ] || ln -s "$PROJECT_DIR" "$LINK"
+# Verificar de verdad, no confiar en que ln no falló.
+if [ "$(readlink "$LINK")" != "$PROJECT_DIR" ]; then
+    echo "✗ No se pudo enlazar el nodo: $LINK -> $(readlink "$LINK" || echo '(nada)')"
+    exit 1
+fi
+echo "✓ Node linked -> $PROJECT_DIR"
 
 # --- Build ---
 echo ""
