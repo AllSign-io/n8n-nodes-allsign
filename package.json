@@ -1,77 +1,77 @@
 {
-  "name": "n8n-nodes-allsign",
-  "version": "0.6.0",
-  "description": "n8n integration for AllSign — Electronic signature, document management, biometric signing. Supports FEA, NOM-151, and WhatsApp delivery.",
-  "license": "MIT",
-  "engines": {
-    "node": ">=22"
-  },
-  "homepage": "https://allsign.io",
-  "keywords": [
-    "n8n-community-node-package",
-    "n8n",
-    "allsign",
-    "document-signing",
-    "esignature",
-    "electronic-signature",
-    "signature",
-    "pdf",
-    "contract",
-    "biometric",
-    "nom-151",
-    "fea",
-    "signer",
-    "legal",
-    "whatsapp"
-  ],
-  "author": {
-    "name": "AllSign",
-    "email": "servicios@allsign.io"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/AllSign-io/n8n-nodes-allsign.git"
-  },
-  "bugs": {
-    "url": "https://github.com/AllSign-io/n8n-nodes-allsign/issues"
-  },
-  "scripts": {
-    "start": "./dev.sh",
-    "build": "n8n-node build",
-    "build:watch": "tsc --watch",
-    "dev": "n8n-node dev",
-    "lint": "n8n-node lint",
-    "lint:fix": "n8n-node lint --fix",
-    "test": "jest",
-    "release": "n8n-node release"
-  },
-  "files": [
-    "dist/credentials",
-    "dist/nodes"
-  ],
-  "n8n": {
-    "n8nNodesApiVersion": 1,
-    "strict": true,
-    "credentials": [
-      "dist/credentials/AllSignApi.credentials.js"
-    ],
-    "nodes": [
-      "dist/nodes/Allsign/Allsign.node.js",
-      "dist/nodes/Allsign/AllsignTrigger.node.js"
-    ]
-  },
-  "devDependencies": {
-    "@n8n/node-cli": "*",
-    "@types/jest": "^30.0.0",
-    "@types/node": "^25.2.2",
-    "eslint": "9.32.0",
-    "jest": "^30.2.0",
-    "prettier": "3.6.2",
-    "release-it": "^19.0.4",
-    "ts-jest": "^29.4.6",
-    "typescript": "5.9.2"
-  },
-  "peerDependencies": {
-    "n8n-workflow": "*"
-  }
+	"name": "n8n-nodes-allsign",
+	"version": "0.6.0",
+	"description": "n8n integration for AllSign — Electronic signature, document management, biometric signing. Supports FEA, NOM-151, and WhatsApp delivery.",
+	"license": "MIT",
+	"engines": {
+		"node": ">=22"
+	},
+	"homepage": "https://allsign.io",
+	"keywords": [
+		"n8n-community-node-package",
+		"n8n",
+		"allsign",
+		"document-signing",
+		"esignature",
+		"electronic-signature",
+		"signature",
+		"pdf",
+		"contract",
+		"biometric",
+		"nom-151",
+		"fea",
+		"signer",
+		"legal",
+		"whatsapp"
+	],
+	"author": {
+		"name": "AllSign",
+		"email": "servicios@allsign.io"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/AllSign-io/n8n-nodes-allsign.git"
+	},
+	"bugs": {
+		"url": "https://github.com/AllSign-io/n8n-nodes-allsign/issues"
+	},
+	"scripts": {
+		"start": "./dev.sh",
+		"build": "n8n-node build",
+		"build:watch": "tsc --watch",
+		"dev": "n8n-node dev",
+		"lint": "n8n-node lint",
+		"lint:fix": "n8n-node lint --fix",
+		"test": "jest",
+		"release": "n8n-node release"
+	},
+	"files": [
+		"dist/credentials",
+		"dist/nodes"
+	],
+	"n8n": {
+		"n8nNodesApiVersion": 1,
+		"strict": true,
+		"credentials": [
+			"dist/credentials/AllSignApi.credentials.js"
+		],
+		"nodes": [
+			"dist/nodes/Allsign/Allsign.node.js",
+			"dist/nodes/Allsign/AllsignTrigger.node.js"
+		]
+	},
+	"devDependencies": {
+		"@n8n/node-cli": "*",
+		"@types/jest": "^30.0.0",
+		"@types/node": "^25.2.2",
+		"eslint": "9.32.0",
+		"jest": "^30.2.0",
+		"prettier": "3.6.2",
+		"release-it": "^19.0.4",
+		"ts-jest": "^29.4.6",
+		"typescript": "5.9.2"
+	},
+	"peerDependencies": {
+		"n8n-workflow": "*"
+	}
 }
