@@ -13,7 +13,7 @@ LOCAL = "--local" in sys.argv
 
 HUBSPOT_CRED = {"id": "tvmQvR2REPDObmRZ", "name": "HubSpot App Token account"} if LOCAL \
     else {"id": "", "name": "HubSpot App Token"}
-SLACK_CRED = {"id": "", "name": "Slack account"}
+GMAIL_CRED = {"id": "", "name": "Gmail account"}
 ALLSIGN_CRED = {"id": "smokeAllSignDev01", "name": "[smoke] AllSign dev"} if LOCAL \
     else {"id": "", "name": "AllSign API"}
 TEMPLATE_ID = "tmpl_f0d23d6015e5494184cb3639ebcfc01e" if LOCAL else "tmpl_REPLACE_ME"
@@ -330,13 +330,14 @@ mark = hs_update("Mark contract as signed", "={{ $('Deal for this contract').fir
     ("allsign_contract_status", "signed"),
 ], 2160, Y2)
 
-slack = node("Tell the team on Slack", "n8n-nodes-base.slack", 2.3, {
-    "select": "channel",
-    "channelId": {"__rl": True, "mode": "name", "value": "sales"},
-    "text": "=:writing_hand: *{{ $('Deal for this contract').first().json.properties.dealname }}* is signed. "
-            "The signed PDF and the NOM-151 certificate are attached to the deal in HubSpot.",
-    "otherOptions": {},
-}, 2400, Y2, cred={"slackApi": SLACK_CRED})
+notify = node("Tell the team", "n8n-nodes-base.gmail", 2.1, {
+    "sendTo": "sales@example.com",
+    "subject": "=Signed: {{ $('Deal for this contract').first().json.properties.dealname }}",
+    "message": "=The contract for <b>{{ $('Deal for this contract').first().json.properties.dealname }}</b> "
+               "is signed by all parties.<br><br>The signed PDF and the NOM-151 certificate are attached "
+               "to the deal in HubSpot.",
+    "options": {},
+}, 2400, Y2, cred={"gmailOAuth2": GMAIL_CRED})
 
 # ── Error branch: one place to notice a run that broke ──────────────────
 sticky(
@@ -344,20 +345,21 @@ sticky(
     "The **Error Trigger** fires when any run of this workflow fails — a bad "
     "credential, an AllSign outage, a HubSpot rate limit. Without it a failed "
     "contract goes unnoticed and the deal sits there looking sent.\n\n"
-    "Point it at whatever channel you actually read.",
+    "Send it wherever you actually look — swap the email node for your own chat tool if you prefer.",
     -80, Y2 + 480, 460, 200, color=3)
 
 err = node("Something failed", "n8n-nodes-base.errorTrigger", 1, {}, 0, Y2 + 700)
-err_msg = node("Report the failure", "n8n-nodes-base.slack", 2.3, {
-    "select": "channel",
-    "channelId": {"__rl": True, "mode": "name", "value": "sales"},
-    "text": "=:warning: AllSign contract workflow failed at *{{ $json.execution.lastNodeExecuted }}*: "
-            "{{ $json.execution.error.message }}",
-    "otherOptions": {},
-}, 240, Y2 + 700, cred={"slackApi": SLACK_CRED})
+err_msg = node("Report the failure", "n8n-nodes-base.gmail", 2.1, {
+    "sendTo": "sales@example.com",
+    "subject": "=AllSign contract workflow failed",
+    "message": "=The run failed at <b>{{ $json.execution.lastNodeExecuted }}</b>.<br><br>"
+               "{{ $json.execution.error.message }}<br><br>"
+               "<a href=\"{{ $json.execution.url }}\">Open the execution in n8n</a>",
+    "options": {},
+}, 240, Y2 + 700, cred={"gmailOAuth2": GMAIL_CRED})
 link(err, err_msg)
 
-for a, b in [(trig, s2), (s2, ev), (ev, ready), (wait_ev, ev), (files, dl), (dl, up), (up, agg), (agg, note2), (note2, mark), (mark, slack)]:
+for a, b in [(trig, s2), (s2, ev), (ev, ready), (wait_ev, ev), (files, dl), (dl, up), (up, agg), (agg, note2), (note2, mark), (mark, notify)]:
     link(a, b)
 link(ready, files, 0)
 link(ready, wait_ev, 1)
@@ -426,7 +428,8 @@ sticky(
     "and `allsign_contract_status` (dropdown: `sent`, `signed`).\n"
     "4. Upload your contract as a **template** in AllSign and paste its `tmpl_…` ID in "
     "*Prepare contract data*. Map your template variables in *Create contract in AllSign*.\n"
-    "5. Optional: connect Slack in the two Slack nodes, or delete them.\n"
+    "5. Optional: connect Gmail in the two notification nodes and change the "
+    "recipient address, or delete them.\n"
     "6. Publish the workflow. Close a deal as **Closed Won** and watch the contract go out.\n\n"
     "Phone numbers take the dialling code from the contact's Country property. "
     "If the country is unknown the contract goes by email instead — see *Prepare contract data*.",

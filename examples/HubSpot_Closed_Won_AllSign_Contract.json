@@ -748,33 +748,29 @@
     },
     {
       "parameters": {
-        "select": "channel",
-        "channelId": {
-          "__rl": true,
-          "mode": "name",
-          "value": "sales"
-        },
-        "text": "=:writing_hand: *{{ $('Deal for this contract').first().json.properties.dealname }}* is signed. The signed PDF and the NOM-151 certificate are attached to the deal in HubSpot.",
-        "otherOptions": {}
+        "sendTo": "sales@example.com",
+        "subject": "=Signed: {{ $('Deal for this contract').first().json.properties.dealname }}",
+        "message": "=The contract for <b>{{ $('Deal for this contract').first().json.properties.dealname }}</b> is signed by all parties.<br><br>The signed PDF and the NOM-151 certificate are attached to the deal in HubSpot.",
+        "options": {}
       },
-      "id": "3bf90572-a682-50ce-865d-b159693a4b0d",
-      "name": "Tell the team on Slack",
-      "type": "n8n-nodes-base.slack",
-      "typeVersion": 2.3,
+      "id": "9047f061-6bb2-5ae5-ae6b-0e09b10e167b",
+      "name": "Tell the team",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
       "position": [
         2400,
         900
       ],
       "credentials": {
-        "slackApi": {
+        "gmailOAuth2": {
           "id": "",
-          "name": "Slack account"
+          "name": "Gmail account"
         }
       }
     },
     {
       "parameters": {
-        "content": "## If something breaks\n\nThe **Error Trigger** fires when any run of this workflow fails — a bad credential, an AllSign outage, a HubSpot rate limit. Without it a failed contract goes unnoticed and the deal sits there looking sent.\n\nPoint it at whatever channel you actually read.",
+        "content": "## If something breaks\n\nThe **Error Trigger** fires when any run of this workflow fails — a bad credential, an AllSign outage, a HubSpot rate limit. Without it a failed contract goes unnoticed and the deal sits there looking sent.\n\nSend it wherever you actually look — swap the email node for your own chat tool if you prefer.",
         "width": 460,
         "height": 200,
         "color": 3
@@ -801,27 +797,23 @@
     },
     {
       "parameters": {
-        "select": "channel",
-        "channelId": {
-          "__rl": true,
-          "mode": "name",
-          "value": "sales"
-        },
-        "text": "=:warning: AllSign contract workflow failed at *{{ $json.execution.lastNodeExecuted }}*: {{ $json.execution.error.message }}",
-        "otherOptions": {}
+        "sendTo": "sales@example.com",
+        "subject": "=AllSign contract workflow failed",
+        "message": "=The run failed at <b>{{ $json.execution.lastNodeExecuted }}</b>.<br><br>{{ $json.execution.error.message }}<br><br><a href=\"{{ $json.execution.url }}\">Open the execution in n8n</a>",
+        "options": {}
       },
       "id": "838ac074-d8ff-5dea-9204-8f12e2b3879b",
       "name": "Report the failure",
-      "type": "n8n-nodes-base.slack",
-      "typeVersion": 2.3,
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
       "position": [
         240,
         1600
       ],
       "credentials": {
-        "slackApi": {
+        "gmailOAuth2": {
           "id": "",
-          "name": "Slack account"
+          "name": "Gmail account"
         }
       }
     },
@@ -1026,7 +1018,7 @@
     },
     {
       "parameters": {
-        "content": "## Setup (5 minutes)\n\n1. **AllSign** → Developers → API keys. Create a key with document scopes plus `webhook:read`, `webhook:write`, `webhook:delete`. Add it as the *AllSign API* credential.\n2. **HubSpot** → Settings → Integrations → Private apps. Create one with `crm.objects.contacts` (read/write), `crm.objects.deals` (read/write), `crm.schemas.deals.read` and `files`. Add the token as the *HubSpot App Token* credential.\n3. In HubSpot, add two **deal properties**: `allsign_document_id` (single-line text) and `allsign_contract_status` (dropdown: `sent`, `signed`).\n4. Upload your contract as a **template** in AllSign and paste its `tmpl_…` ID in *Prepare contract data*. Map your template variables in *Create contract in AllSign*.\n5. Optional: connect Slack in the two Slack nodes, or delete them.\n6. Publish the workflow. Close a deal as **Closed Won** and watch the contract go out.\n\nPhone numbers take the dialling code from the contact's Country property. If the country is unknown the contract goes by email instead — see *Prepare contract data*.",
+        "content": "## Setup (5 minutes)\n\n1. **AllSign** → Developers → API keys. Create a key with document scopes plus `webhook:read`, `webhook:write`, `webhook:delete`. Add it as the *AllSign API* credential.\n2. **HubSpot** → Settings → Integrations → Private apps. Create one with `crm.objects.contacts` (read/write), `crm.objects.deals` (read/write), `crm.schemas.deals.read` and `files`. Add the token as the *HubSpot App Token* credential.\n3. In HubSpot, add two **deal properties**: `allsign_document_id` (single-line text) and `allsign_contract_status` (dropdown: `sent`, `signed`).\n4. Upload your contract as a **template** in AllSign and paste its `tmpl_…` ID in *Prepare contract data*. Map your template variables in *Create contract in AllSign*.\n5. Optional: connect Gmail in the two notification nodes and change the recipient address, or delete them.\n6. Publish the workflow. Close a deal as **Closed Won** and watch the contract go out.\n\nPhone numbers take the dialling code from the contact's Country property. If the country is unknown the contract goes by email instead — see *Prepare contract data*.",
         "width": 640,
         "height": 300,
         "color": 6
@@ -1273,7 +1265,7 @@
       "main": [
         [
           {
-            "node": "Tell the team on Slack",
+            "node": "Tell the team",
             "type": "main",
             "index": 0
           }
