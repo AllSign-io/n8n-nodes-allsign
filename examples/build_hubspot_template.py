@@ -117,8 +117,9 @@ sticky(
     "Every 5 minutes this branch asks HubSpot for deals in **Closed Won** that "
     "don't have an AllSign contract yet, builds the contract from your AllSign "
     "template and sends it to the deal's contact.\n\n"
-    "If the contact has a phone number the invitation goes by **WhatsApp**, "
-    "otherwise by email. The deal keeps the contract ID and status "
+    "The invitation goes by **WhatsApp** when the contact's phone can be completed "
+    "with the dialling code of their Country, and by email otherwise — a half-written "
+    "number never reaches anyone. The deal keeps the contract ID and status "
     "(`allsign_document_id`, `allsign_contract_status`) so nothing is sent twice.",
     -80, Y1 - 320, 520, 260, color=4)
 
@@ -431,8 +432,9 @@ sticky(
     "and `allsign_contract_status` (dropdown: `sent`, `signed`).\n"
     "4. Upload your contract as a **template** in AllSign and paste its `tmpl_…` ID in "
     "*Prepare contract data*. Map your template variables in *Create contract in AllSign*.\n"
-    "5. Optional: connect your mail server in the two email nodes and set the "
-    "sender and recipient, or delete them.\n"
+    "5. The two email nodes ship with placeholder addresses (`sales@example.com`) "
+    "that bounce. Connect your mail server, put your real sender and recipient, "
+    "or delete the nodes.\n"
     "6. Publish the workflow. Close a deal as **Closed Won** and watch the contract go out.\n\n"
     "Phone numbers take the dialling code from the contact's Country property. "
     "If the country is unknown the contract goes by email instead — see *Prepare contract data*.",
