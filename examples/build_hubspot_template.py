@@ -436,8 +436,11 @@ sticky(
     "that bounce. Connect your mail server, put your real sender and recipient, "
     "or delete the nodes.\n"
     "6. Publish the workflow. Close a deal as **Closed Won** and watch the contract go out.\n\n"
-    "Phone numbers take the dialling code from the contact's Country property. "
-    "If the country is unknown the contract goes by email instead — see *Prepare contract data*.",
+    "**Email or WhatsApp?** The workflow decides per contact, you don't pick one: the "
+    "phone number takes the dialling code from the contact's Country property, and if the "
+    "country is unknown the contract goes by email instead of sending half a number. "
+    "To always use the same channel, open *Prepare contract data* and replace the `channel` "
+    "value with `email` or `whatsapp`.",
     560, Y1 - 320, 640, 300, color=6)
 
 workflow = {
