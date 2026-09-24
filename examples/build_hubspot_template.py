@@ -10,6 +10,8 @@ import sys
 import uuid
 
 LOCAL = "--local" in sys.argv
+# Arranque en tiempo real: HubSpot avisa en vez de que nosotros preguntemos.
+WEBHOOK = "--webhook" in sys.argv
 
 HUBSPOT_CRED = {"id": "tvmQvR2REPDObmRZ", "name": "HubSpot App Token account"} if LOCAL \
     else {"id": "", "name": "HubSpot App Token"}
@@ -113,23 +115,80 @@ def note_body(deal_id_expr, body_expr, attachments_expr=None):
 # ───────────────────────── FLOW 1 — Closed Won → send contract ─────────────────────────
 Y1 = 300
 sticky(
-    "## 1 · Deal closes → contract goes out\n\n"
-    "Every 5 minutes this branch asks HubSpot for deals in **Closed Won** that "
-    "don't have an AllSign contract yet, builds the contract from your AllSign "
-    "template and sends it to the deal's contact.\n\n"
+    "## 1 · Deal closes → contract goes out\n\n" + (
+        "HubSpot calls this workflow the moment a deal moves to **Closed Won**. It reads "
+        "the deal, skips the ones that already have a contract, builds the contract from "
+        "your AllSign template and sends it to the deal's contact.\n\n"
+        if WEBHOOK else
+        "Every 5 minutes this branch asks HubSpot for deals in **Closed Won** that "
+        "don't have an AllSign contract yet, builds the contract from your AllSign "
+        "template and sends it to the deal's contact.\n\n") +
     "The invitation goes by **WhatsApp** when the contact's phone can be completed "
     "with the dialling code of their Country, and by email otherwise — a half-written "
     "number never reaches anyone. The deal keeps the contract ID and status "
     "(`allsign_document_id`, `allsign_contract_status`) so nothing is sent twice.",
     -80, Y1 - 320, 520, 260, color=4)
 
-t1 = node("Every 5 minutes", "n8n-nodes-base.scheduleTrigger", 1.2,
-          {"rule": {"interval": [{"field": "minutes", "minutesInterval": 5}]}}, 0, Y1)
+def _cond(cid, left, right, operation="equals", type_="string", **extra):
+    op = {"type": type_, "operation": operation}
+    op.update(extra)
+    return {"id": cid, "leftValue": left, "rightValue": right, "operator": op}
 
-s1 = hs_search("Closed Won deals without contract", [
-    {"propertyName": "dealstage", "operator": "EQ", "value": "closedwon"},
-    {"propertyName": "allsign_document_id", "operator": "NOT_HAS_PROPERTY"},
-], ["dealname", "amount", "closedate", "allsign_document_id"], 240, Y1)
+
+def _filter(name, conditions, x, y):
+    return node(name, "n8n-nodes-base.filter", 2.2, {
+        "conditions": {
+            "options": {"caseSensitive": True, "leftValue": "", "typeValidation": "strict", "version": 2},
+            "conditions": conditions,
+            "combinator": "and",
+        },
+        "options": {},
+    }, x, y)
+
+
+if WEBHOOK:
+    # HubSpot manda un arreglo de eventos por llamada, y avisa de CUALQUIER cambio
+    # suscrito: hay que abrirlo evento por evento y quedarse solo con los que
+    # movieron la etapa a Closed Won.
+    t1 = node("HubSpot calls when a deal changes", "n8n-nodes-base.webhook", 2, {
+        "httpMethod": "POST",
+        "path": "hubspot-deal-closed",
+        "options": {},
+    }, -720, Y1, webhookId=str(uuid.uuid5(uuid.NAMESPACE_URL, "hubspot-deal-closed")))
+
+    split1 = node("One item per event", "n8n-nodes-base.splitOut", 1, {
+        "fieldToSplitOut": "body", "options": {},
+    }, -480, Y1)
+
+    onlywon = _filter("Moved to Closed Won?", [
+        _cond("prop", "={{ $json.propertyName }}", "dealstage"),
+        _cond("val", "={{ $json.propertyValue }}", "closedwon"),
+    ], -240, Y1)
+
+    s1 = hs_http("The deal that just closed", "GET",
+                 "=" + HS + "/crm/v3/objects/deals/{{ $json.objectId }}"
+                 "?properties=dealname,amount,closedate,allsign_document_id", 0, Y1)
+
+    fresh = _filter("No contract on it yet?", [
+        _cond("nodoc", "={{ $json.properties.allsign_document_id }}", "",
+              operation="empty", singleValue=True),
+    ], 240, Y1)
+
+    START_CHAIN = [(t1, split1), (split1, onlywon), (onlywon, s1), (s1, fresh)]
+    ENTRY = fresh  # el nodo que le pasa el deal al resto del flujo
+else:
+    t1 = node("Every 5 minutes", "n8n-nodes-base.scheduleTrigger", 1.2,
+              {"rule": {"interval": [{"field": "minutes", "minutesInterval": 5}]}}, 0, Y1)
+
+    s1 = hs_search("Closed Won deals without contract", [
+        {"propertyName": "dealstage", "operator": "EQ", "value": "closedwon"},
+        {"propertyName": "allsign_document_id", "operator": "NOT_HAS_PROPERTY"},
+    ], ["dealname", "amount", "closedate", "allsign_document_id"], 240, Y1)
+
+    START_CHAIN = [(t1, s1)]
+    ENTRY = s1
+
+DEAL = s1  # el nodo que trae el deal, se llama distinto en cada variante
 
 c1 = hs_http("Contact linked to the deal", "GET",
              "=" + HS + "/crm/v4/objects/deals/{{ $json.id }}/associations/contacts", 480, Y1)
@@ -152,11 +211,11 @@ prep = node("Prepare contract data", "n8n-nodes-base.set", 3.4, {
     "mode": "manual",
     "assignments": {"assignments": [
         {"id": "a1", "name": "dealId", "type": "string",
-         "value": "={{ $('Closed Won deals without contract').item.json.id }}"},
+         "value": "={{ $('" + DEAL + "').item.json.id }}"},
         {"id": "a2", "name": "dealName", "type": "string",
-         "value": "={{ $('Closed Won deals without contract').item.json.properties.dealname }}"},
+         "value": "={{ $('" + DEAL + "').item.json.properties.dealname }}"},
         {"id": "a3", "name": "amount", "type": "string",
-         "value": "={{ $('Closed Won deals without contract').item.json.properties.amount || '' }}"},
+         "value": "={{ $('" + DEAL + "').item.json.properties.amount || '' }}"},
         {"id": "a4", "name": "contactName", "type": "string",
          "value": "={{ [$json.properties.firstname, $json.properties.lastname].filter(Boolean).join(' ') }}"},
         {"id": "a5", "name": "email", "type": "string", "value": "={{ $json.properties.email || '' }}"},
@@ -238,8 +297,8 @@ note1 = hs_http("Log 'contract sent' on the deal", "POST", HS + "/crm/v3/objects
                                "Contract sent for signature via AllSign ({{ $('Create contract in AllSign').item.json.id }}) "
                                "by {{ $('Prepare contract data').item.json.channel }} to {{ $('Prepare contract data').item.json.contactName }}."))
 
-for a, b in [(t1, s1), (s1, c1), (c1, if1), (c2, prep), (prep, sw),
-             (create, send), (send, save), (save, note1)]:
+for a, b in START_CHAIN + [(ENTRY, c1), (c1, if1), (c2, prep), (prep, sw),
+                           (create, send), (send, save), (save, note1)]:
     link(a, b)
 link(if1, c2, 0)
 link(sw, create, 0)
@@ -435,7 +494,11 @@ sticky(
     "5. The two email nodes ship with placeholder addresses (`sales@example.com`) "
     "that bounce. Connect your mail server, put your real sender and recipient, "
     "or delete the nodes.\n"
-    "6. Publish the workflow. Close a deal as **Closed Won** and watch the contract go out.\n\n"
+    "6. Publish the workflow. Close a deal as **Closed Won** and watch the contract go out.\n\n" +
+    ("7. In that same private app open the **Webhooks** tab, paste the Production URL of "
+     "*HubSpot calls when a deal changes* as the Target URL, and subscribe to **Deal → "
+     "Property changed → Deal Stage**. No developer account and no public app needed. "
+     "The workflow has to be published first, or the URL does not answer yet.\n\n" if WEBHOOK else "") +
     "**Email or WhatsApp?** The workflow decides per contact, you don't pick one: the "
     "phone number takes the dialling code from the contact's Country property, and if the "
     "country is unknown the contract goes by email instead of sending half a number. "
@@ -444,7 +507,8 @@ sticky(
     560, Y1 - 320, 640, 300, color=6)
 
 workflow = {
-    "name": "Close HubSpot deals with NOM-151 compliant e-signature and WhatsApp delivery",
+    "name": "Close HubSpot deals with NOM-151 compliant e-signature and WhatsApp delivery"
+            + (" — real time" if WEBHOOK else ""),
     "nodes": nodes,
     "connections": connections,
     "settings": {"executionOrder": "v1"},
