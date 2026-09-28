@@ -18,7 +18,7 @@ HUBSPOT_CRED = {"id": "tvmQvR2REPDObmRZ", "name": "HubSpot App Token account"} i
 SMTP_CRED = {"id": "", "name": "SMTP account"}
 ALLSIGN_CRED = {"id": "smokeAllSignDev01", "name": "[smoke] AllSign dev"} if LOCAL \
     else {"id": "", "name": "AllSign API"}
-TEMPLATE_ID = "tmpl_f0d23d6015e5494184cb3639ebcfc01e" if LOCAL else "tmpl_REPLACE_ME"
+TEMPLATE_ID = "tmpl_95f355eeb6ba4bfebf73a797e37434d4" if LOCAL else "tmpl_REPLACE_ME"
 
 HS = "https://api.hubapi.com"
 
@@ -269,9 +269,11 @@ create = allsign("Create contract in AllSign", {
     "documentName": "=Contract — {{ $json.dealName }}",
     "source": "template",
     "templateId": "={{ $json.templateId }}",
-    "templateValues": "={{ JSON.stringify({ client_name: $json.contactName, company_name: $json.company || $json.dealName, "
-                      "effective_date: $today.toFormat('yyyy-MM-dd'), project_description: $json.dealName, "
-                      "confidentiality_period: '2 years', governing_law: 'Mexico City, Mexico' }) }}",
+    "templateValues": "={{ JSON.stringify({ nombre_cliente: $json.contactName, "
+                      "empresa_cliente: $json.company || $json.dealName, correo_cliente: $json.email, "
+                      "objeto: $json.dealName, fecha_efectiva: $today.toFormat('dd/MM/yyyy'), "
+                      "empresa_emisora: 'Tu empresa', vigencia: 'dos años', "
+                      "jurisdiccion: 'Ciudad de México' }) }}",
     "signers": {"signerValues": [{
         "name": "={{ $json.contactName }}",
         "deliveryMethod": "={{ $json.channel }}",
@@ -490,7 +492,10 @@ sticky(
     "3. In HubSpot, add two **deal properties**: `allsign_document_id` (single-line text) "
     "and `allsign_contract_status` (dropdown: `sent`, `signed`).\n"
     "4. Upload your contract as a **template** in AllSign and paste its `tmpl_…` ID in "
-    "*Prepare contract data*. Map your template variables in *Create contract in AllSign*.\n"
+    "*Prepare contract data*. In *Create contract in AllSign* the variables come from the deal "
+    "and its contact; the three that are yours — who discloses, the term and the jurisdiction — "
+    "are written there as plain text, change them once. `examples/NDA_Plantilla_AllSign_ES.docx` "
+    "in this repo is a ready NDA in Spanish with exactly those variables.\n"
     "5. The two email nodes ship with placeholder addresses (`sales@example.com`) "
     "that bounce. Connect your mail server, put your real sender and recipient, "
     "or delete the nodes.\n"
