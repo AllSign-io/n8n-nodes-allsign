@@ -115,7 +115,7 @@ def note_body(deal_id_expr, body_expr, attachments_expr=None):
 # ───────────────────────── FLOW 1 — Closed Won → send contract ─────────────────────────
 Y1 = 300
 sticky(
-    "## 1 · Se cierra el negocio → sale el contrato\n\n" + (
+    "# 1 · Se cierra el negocio → sale el contrato\n\n" + (
         "HubSpot avisa en el momento en que un negocio pasa a **Closed Won**. El flujo lee "
         "el negocio, descarta los que ya tienen contrato, arma el documento con tu plantilla "
         "de AllSign y se lo manda al contacto del negocio.\n\n"
@@ -127,7 +127,7 @@ sticky(
     "con la lada de su país, y por **correo** cuando no: mandar medio número no le llega a "
     "nadie. El negocio guarda el id y el estado del contrato "
     "(`allsign_document_id`, `allsign_contract_status`) para no mandarlo dos veces.",
-    -80, Y1 - 320, 520, 260, color=4)
+    -80, Y1 - 420, 620, 340, color=4)
 
 def _cond(cid, left, right, operation="equals", type_="string", **extra):
     op = {"type": type_, "operation": operation}
@@ -307,16 +307,16 @@ link(sw, create, 0)
 link(sw, create, 1)
 
 # ───────────────────────── FLOW 2 — signed → close the loop ─────────────────────────
-Y2 = 900
+Y2 = 1100
 sticky(
-    "## 2 · Ya firmaron → la evidencia llega al negocio\n\n"
+    "# 2 · Ya firmaron → la evidencia llega al negocio\n\n"
     "El **AllSign Trigger** registra un webhook en tu cuenta de AllSign y se dispara con "
     "`document.completed`. El flujo busca el negocio por el id del contrato, baja el PDF "
     "firmado y la **constancia NOM-151**, los sube a HubSpot, los deja adjuntos en una nota "
     "del negocio y lo marca como **firmado**.\n\n"
     "Tu llave de AllSign necesita los permisos `webhook:read`, `webhook:write` y "
     "`webhook:delete` para que el disparador se registre y limpie lo suyo al final.",
-    -80, Y2 - 320, 520, 280, color=4)
+    -80, Y2 - 440, 620, 360, color=4)
 
 trig = node("Contract signed", "n8n-nodes-allsign.allsignTrigger", 1, {
     "events": ["document.completed"],
@@ -404,16 +404,16 @@ notify = node("Tell the team", "n8n-nodes-base.emailSend", 2.1, {
 
 # ── Error branch: one place to notice a run that broke ──────────────────
 sticky(
-    "## Si algo truena\n\n"
+    "# Si algo truena\n\n"
     "El **Error Trigger** se dispara cuando cualquier corrida del flujo falla: una "
     "credencial mala, AllSign caído, HubSpot que corta por exceso de llamadas. Sin él, un "
     "contrato que no salió pasa desapercibido y el negocio se queda como si estuviera "
     "enviado.\n\n"
     "Mándalo a donde de verdad lo veas: si prefieres tu chat, cambia el nodo de correo por "
     "el de tu herramienta.",
-    -80, Y2 + 480, 460, 200, color=3)
+    -80, Y2 + 520, 560, 260, color=3)
 
-err = node("Something failed", "n8n-nodes-base.errorTrigger", 1, {}, 0, Y2 + 700)
+err = node("Something failed", "n8n-nodes-base.errorTrigger", 1, {}, 0, Y2 + 900)
 err_msg = node("Report the failure", "n8n-nodes-base.emailSend", 2.1, {
     "fromEmail": "no-reply@example.com",
     "toEmail": "sales@example.com",
@@ -422,7 +422,7 @@ err_msg = node("Report the failure", "n8n-nodes-base.emailSend", 2.1, {
     "html": "=The run failed at <b>{{ $json.execution.lastNodeExecuted }}</b>.<br><br>"
             "{{ $json.execution.error.message }}",
     "options": {},
-}, 240, Y2 + 700, cred={"smtp": SMTP_CRED})
+}, 240, Y2 + 900, cred={"smtp": SMTP_CRED})
 link(err, err_msg)
 
 for a, b in [(trig, s2), (s2, ev), (ev, ready), (wait_ev, ev), (files, dl), (dl, up), (up, agg), (agg, note2), (note2, mark), (mark, notify)]:
@@ -431,15 +431,15 @@ link(ready, files, 0)
 link(ready, wait_ev, 1)
 
 # ───────────────────────── FLOW 3 — daily reminders ─────────────────────────
-Y3 = 1500
+Y3 = 2600
 sticky(
-    "## 3 · Recordatorio diario a quien falta por firmar\n\n"
+    "# 3 · Recordatorio diario a quien falta por firmar\n\n"
     "Cada mañana el flujo toma los negocios cuyo contrato sigue en **enviado**, le pregunta "
     "a AllSign quién falta y le manda un recordatorio a cada uno, por el mismo medio que la "
     "invitación.\n\n"
     "AllSign permite un recordatorio por firmante cada 4 horas y 10 llamadas por minuto: por "
     "eso salen de uno en uno con una pausa, y uno rechazado no detiene la corrida.",
-    -80, Y3 - 300, 520, 240, color=4)
+    -80, Y3 - 400, 620, 320, color=4)
 
 t3 = node("Every day at 9:00", "n8n-nodes-base.scheduleTrigger", 1.2,
           {"rule": {"interval": [{"field": "cronExpression", "expression": "0 9 * * 1-5"}]}}, 0, Y3)
@@ -483,7 +483,7 @@ link(loop, remind, 1)  # output "loop"
 
 # ───────────────────────── setup note ─────────────────────────
 sticky(
-    "## Instalación (5 minutos)\n\n"
+    "# Instalación (5 minutos)\n\n"
     "1. **AllSign** → Desarrolladores → API keys. Crea una llave con los permisos de "
     "documentos más `webhook:read`, `webhook:write` y `webhook:delete`. Guárdala en la "
     "credencial *AllSign API*.\n"
@@ -513,7 +513,7 @@ sticky(
     "país el contrato se va por correo en lugar de mandar medio número. Para forzar siempre "
     "el mismo medio, abre *Prepare contract data* y cambia el valor de `channel` por "
     "`email` o `whatsapp`.",
-    560, Y1 - 320, 640, 300, color=6)
+    620, Y1 - 560, 780, 520, color=6)
 
 workflow = {
     "name": "Close HubSpot deals with NOM-151 compliant e-signature and WhatsApp delivery"

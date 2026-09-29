@@ -3,9 +3,9 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## 1 · Se cierra el negocio → sale el contrato\n\nCada 5 minutos el flujo le pregunta a HubSpot por los negocios en **Closed Won** que todavía no tienen contrato de AllSign, arma el documento con tu plantilla y se lo manda al contacto del negocio.\n\nLa invitación va por **WhatsApp** cuando el teléfono del contacto se puede completar con la lada de su país, y por **correo** cuando no: mandar medio número no le llega a nadie. El negocio guarda el id y el estado del contrato (`allsign_document_id`, `allsign_contract_status`) para no mandarlo dos veces.",
-        "width": 520,
-        "height": 260,
+        "content": "# 1 · Se cierra el negocio → sale el contrato\n\nCada 5 minutos el flujo le pregunta a HubSpot por los negocios en **Closed Won** que todavía no tienen contrato de AllSign, arma el documento con tu plantilla y se lo manda al contacto del negocio.\n\nLa invitación va por **WhatsApp** cuando el teléfono del contacto se puede completar con la lada de su país, y por **correo** cuando no: mandar medio número no le llega a nadie. El negocio guarda el id y el estado del contrato (`allsign_document_id`, `allsign_contract_status`) para no mandarlo dos veces.",
+        "width": 620,
+        "height": 340,
         "color": 4
       },
       "id": "67a0b71a-2bd2-54fe-a0ff-6aa32449d476",
@@ -14,7 +14,7 @@
       "typeVersion": 1,
       "position": [
         -80,
-        -20
+        -120
       ]
     },
     {
@@ -430,9 +430,9 @@
     },
     {
       "parameters": {
-        "content": "## 2 · Ya firmaron → la evidencia llega al negocio\n\nEl **AllSign Trigger** registra un webhook en tu cuenta de AllSign y se dispara con `document.completed`. El flujo busca el negocio por el id del contrato, baja el PDF firmado y la **constancia NOM-151**, los sube a HubSpot, los deja adjuntos en una nota del negocio y lo marca como **firmado**.\n\nTu llave de AllSign necesita los permisos `webhook:read`, `webhook:write` y `webhook:delete` para que el disparador se registre y limpie lo suyo al final.",
-        "width": 520,
-        "height": 280,
+        "content": "# 2 · Ya firmaron → la evidencia llega al negocio\n\nEl **AllSign Trigger** registra un webhook en tu cuenta de AllSign y se dispara con `document.completed`. El flujo busca el negocio por el id del contrato, baja el PDF firmado y la **constancia NOM-151**, los sube a HubSpot, los deja adjuntos en una nota del negocio y lo marca como **firmado**.\n\nTu llave de AllSign necesita los permisos `webhook:read`, `webhook:write` y `webhook:delete` para que el disparador se registre y limpie lo suyo al final.",
+        "width": 620,
+        "height": 360,
         "color": 4
       },
       "id": "10371405-e149-5269-b010-da9e6ade20b0",
@@ -441,7 +441,7 @@
       "typeVersion": 1,
       "position": [
         -80,
-        580
+        660
       ]
     },
     {
@@ -457,7 +457,7 @@
       "typeVersion": 1,
       "position": [
         0,
-        900
+        1100
       ],
       "credentials": {
         "allSignApi": {
@@ -501,7 +501,7 @@
       "typeVersion": 2.2,
       "position": [
         240,
-        900
+        1100
       ],
       "credentials": {
         "hubspotAppToken": {
@@ -522,7 +522,7 @@
       "typeVersion": 1,
       "position": [
         480,
-        900
+        1100
       ],
       "credentials": {
         "allSignApi": {
@@ -562,7 +562,7 @@
       "typeVersion": 2.2,
       "position": [
         720,
-        900
+        1100
       ]
     },
     {
@@ -576,7 +576,7 @@
       "typeVersion": 1.1,
       "position": [
         720,
-        1100
+        1300
       ],
       "webhookId": "cc00f265-444e-5de4-8e19-36495455e8ea"
     },
@@ -590,7 +590,7 @@
       "typeVersion": 2,
       "position": [
         960,
-        900
+        1100
       ]
     },
     {
@@ -612,7 +612,7 @@
       "typeVersion": 4.2,
       "position": [
         1200,
-        900
+        1100
       ]
     },
     {
@@ -652,7 +652,7 @@
       "typeVersion": 4.2,
       "position": [
         1440,
-        900
+        1100
       ],
       "credentials": {
         "hubspotAppToken": {
@@ -681,7 +681,7 @@
       "typeVersion": 1,
       "position": [
         1680,
-        900
+        1100
       ]
     },
     {
@@ -701,7 +701,7 @@
       "typeVersion": 4.2,
       "position": [
         1920,
-        900
+        1100
       ],
       "credentials": {
         "hubspotAppToken": {
@@ -737,7 +737,7 @@
       "typeVersion": 2.2,
       "position": [
         2160,
-        900
+        1100
       ],
       "credentials": {
         "hubspotAppToken": {
@@ -761,7 +761,7 @@
       "typeVersion": 2.1,
       "position": [
         2400,
-        900
+        1100
       ],
       "credentials": {
         "smtp": {
@@ -772,9 +772,9 @@
     },
     {
       "parameters": {
-        "content": "## Si algo truena\n\nEl **Error Trigger** se dispara cuando cualquier corrida del flujo falla: una credencial mala, AllSign caído, HubSpot que corta por exceso de llamadas. Sin él, un contrato que no salió pasa desapercibido y el negocio se queda como si estuviera enviado.\n\nMándalo a donde de verdad lo veas: si prefieres tu chat, cambia el nodo de correo por el de tu herramienta.",
-        "width": 460,
-        "height": 200,
+        "content": "# Si algo truena\n\nEl **Error Trigger** se dispara cuando cualquier corrida del flujo falla: una credencial mala, AllSign caído, HubSpot que corta por exceso de llamadas. Sin él, un contrato que no salió pasa desapercibido y el negocio se queda como si estuviera enviado.\n\nMándalo a donde de verdad lo veas: si prefieres tu chat, cambia el nodo de correo por el de tu herramienta.",
+        "width": 560,
+        "height": 260,
         "color": 3
       },
       "id": "a0fd72e9-b328-5383-beae-274232e3586c",
@@ -783,7 +783,7 @@
       "typeVersion": 1,
       "position": [
         -80,
-        1380
+        1620
       ]
     },
     {
@@ -794,7 +794,7 @@
       "typeVersion": 1,
       "position": [
         0,
-        1600
+        2000
       ]
     },
     {
@@ -812,7 +812,7 @@
       "typeVersion": 2.1,
       "position": [
         240,
-        1600
+        2000
       ],
       "credentials": {
         "smtp": {
@@ -823,9 +823,9 @@
     },
     {
       "parameters": {
-        "content": "## 3 · Recordatorio diario a quien falta por firmar\n\nCada mañana el flujo toma los negocios cuyo contrato sigue en **enviado**, le pregunta a AllSign quién falta y le manda un recordatorio a cada uno, por el mismo medio que la invitación.\n\nAllSign permite un recordatorio por firmante cada 4 horas y 10 llamadas por minuto: por eso salen de uno en uno con una pausa, y uno rechazado no detiene la corrida.",
-        "width": 520,
-        "height": 240,
+        "content": "# 3 · Recordatorio diario a quien falta por firmar\n\nCada mañana el flujo toma los negocios cuyo contrato sigue en **enviado**, le pregunta a AllSign quién falta y le manda un recordatorio a cada uno, por el mismo medio que la invitación.\n\nAllSign permite un recordatorio por firmante cada 4 horas y 10 llamadas por minuto: por eso salen de uno en uno con una pausa, y uno rechazado no detiene la corrida.",
+        "width": 620,
+        "height": 320,
         "color": 4
       },
       "id": "fd54f484-825a-559f-9eb3-cb590d05f40a",
@@ -834,7 +834,7 @@
       "typeVersion": 1,
       "position": [
         -80,
-        1200
+        2200
       ]
     },
     {
@@ -854,7 +854,7 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        1500
+        2600
       ]
     },
     {
@@ -891,7 +891,7 @@
       "typeVersion": 2.2,
       "position": [
         240,
-        1500
+        2600
       ],
       "credentials": {
         "hubspotAppToken": {
@@ -912,7 +912,7 @@
       "typeVersion": 1,
       "position": [
         480,
-        1500
+        2600
       ],
       "credentials": {
         "allSignApi": {
@@ -932,7 +932,7 @@
       "typeVersion": 1,
       "position": [
         720,
-        1500
+        2600
       ]
     },
     {
@@ -965,7 +965,7 @@
       "typeVersion": 2.2,
       "position": [
         960,
-        1500
+        2600
       ]
     },
     {
@@ -979,7 +979,7 @@
       "typeVersion": 3,
       "position": [
         1200,
-        1500
+        2600
       ]
     },
     {
@@ -995,7 +995,7 @@
       "typeVersion": 1,
       "position": [
         1440,
-        1660
+        2760
       ],
       "credentials": {
         "allSignApi": {
@@ -1016,15 +1016,15 @@
       "typeVersion": 1.1,
       "position": [
         1680,
-        1660
+        2760
       ],
       "webhookId": "6a2b861d-1ca2-55d7-9871-40d70b5273cc"
     },
     {
       "parameters": {
-        "content": "## Instalación (5 minutos)\n\n1. **AllSign** → Desarrolladores → API keys. Crea una llave con los permisos de documentos más `webhook:read`, `webhook:write` y `webhook:delete`. Guárdala en la credencial *AllSign API*.\n2. **HubSpot** → Configuración → Integraciones → Aplicaciones privadas. Crea una con `crm.objects.contacts` (lectura y escritura), `crm.objects.deals` (lectura y escritura), `crm.schemas.deals.read` y `files`. Guarda el token en la credencial *HubSpot App Token*.\n3. En HubSpot agrega dos **propiedades de negocio**: `allsign_document_id` (texto de una línea) y `allsign_contract_status` (desplegable con `sent` y `signed`).\n4. Sube tu contrato como **plantilla** en AllSign y pega su id `tmpl_…` en *Prepare contract data*. En *Create contract in AllSign* las variables salen del negocio y de su contacto; las tres que son tuyas —quién revela, la vigencia y la jurisdicción— están escritas ahí como texto, cámbialas una vez. En este repo, `examples/NDA_Plantilla_AllSign_ES.docx` es un acuerdo de confidencialidad en español con esas mismas variables.\n5. Los dos nodos de correo traen direcciones de ejemplo (`sales@example.com`) que rebotan. Conecta tu servidor de correo y pon tu remitente y tu destinatario, o bórralos.\n6. Publica el flujo. Cierra un negocio como **Closed Won** y velo salir.\n\n**¿Correo o WhatsApp?** Lo decide el flujo contacto por contacto, tú no eliges: el teléfono toma la lada del país que traiga el contacto en HubSpot, y si no se sabe el país el contrato se va por correo en lugar de mandar medio número. Para forzar siempre el mismo medio, abre *Prepare contract data* y cambia el valor de `channel` por `email` o `whatsapp`.",
-        "width": 640,
-        "height": 300,
+        "content": "# Instalación (5 minutos)\n\n1. **AllSign** → Desarrolladores → API keys. Crea una llave con los permisos de documentos más `webhook:read`, `webhook:write` y `webhook:delete`. Guárdala en la credencial *AllSign API*.\n2. **HubSpot** → Configuración → Integraciones → Aplicaciones privadas. Crea una con `crm.objects.contacts` (lectura y escritura), `crm.objects.deals` (lectura y escritura), `crm.schemas.deals.read` y `files`. Guarda el token en la credencial *HubSpot App Token*.\n3. En HubSpot agrega dos **propiedades de negocio**: `allsign_document_id` (texto de una línea) y `allsign_contract_status` (desplegable con `sent` y `signed`).\n4. Sube tu contrato como **plantilla** en AllSign y pega su id `tmpl_…` en *Prepare contract data*. En *Create contract in AllSign* las variables salen del negocio y de su contacto; las tres que son tuyas —quién revela, la vigencia y la jurisdicción— están escritas ahí como texto, cámbialas una vez. En este repo, `examples/NDA_Plantilla_AllSign_ES.docx` es un acuerdo de confidencialidad en español con esas mismas variables.\n5. Los dos nodos de correo traen direcciones de ejemplo (`sales@example.com`) que rebotan. Conecta tu servidor de correo y pon tu remitente y tu destinatario, o bórralos.\n6. Publica el flujo. Cierra un negocio como **Closed Won** y velo salir.\n\n**¿Correo o WhatsApp?** Lo decide el flujo contacto por contacto, tú no eliges: el teléfono toma la lada del país que traiga el contacto en HubSpot, y si no se sabe el país el contrato se va por correo en lugar de mandar medio número. Para forzar siempre el mismo medio, abre *Prepare contract data* y cambia el valor de `channel` por `email` o `whatsapp`.",
+        "width": 780,
+        "height": 520,
         "color": 6
       },
       "id": "f9471b13-6130-5186-92cf-117eb95240de",
@@ -1032,8 +1032,8 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        560,
-        -20
+        620,
+        -260
       ]
     }
   ],
