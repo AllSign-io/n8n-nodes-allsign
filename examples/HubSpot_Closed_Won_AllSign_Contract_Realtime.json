@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "# 1 · Se cierra el negocio → sale el contrato\n\nHubSpot avisa en el momento en que un negocio pasa a **Closed Won**. El flujo lee el negocio, descarta los que ya tienen contrato, arma el documento con tu plantilla de AllSign y se lo manda al contacto del negocio.\n\nLa invitación va por **WhatsApp** cuando el teléfono del contacto se puede completar con la lada de su país, y por **correo** cuando no: mandar medio número no le llega a nadie. El negocio guarda el id y el estado del contrato (`allsign_document_id`, `allsign_contract_status`) para no mandarlo dos veces.",
+        "content": "# 1 · El negocio avanza → sale el contrato\n\nHubSpot avisa en el momento en que un negocio pasa a **Contrato enviado**. El flujo lee el negocio, descarta los que ya tienen contrato, arma el documento con tu plantilla de AllSign y se lo manda al contacto. Mover el negocio a esa etapa es justo lo que el vendedor ya hace cuando manda un contrato.\n\nLa invitación va por **WhatsApp** cuando el teléfono del contacto se puede completar con la lada de su país, y por **correo** cuando no: mandar medio número no le llega a nadie. El negocio guarda el id y el estado del contrato (`allsign_document_id`, `allsign_contract_status`) para no mandarlo dos veces.",
         "width": 620,
         "height": 340,
         "color": 4
@@ -69,7 +69,7 @@
             {
               "id": "val",
               "leftValue": "={{ $json.propertyValue }}",
-              "rightValue": "closedwon",
+              "rightValue": "contractsent",
               "operator": {
                 "type": "string",
                 "operation": "equals"
@@ -80,8 +80,8 @@
         },
         "options": {}
       },
-      "id": "5a9c4ccb-01b6-536d-935a-94a68dd377cc",
-      "name": "Moved to Closed Won?",
+      "id": "33a73add-9050-51bb-be2e-fdb55bb268f2",
+      "name": "Moved to Contract Sent?",
       "type": "n8n-nodes-base.filter",
       "typeVersion": 2.2,
       "position": [
@@ -97,8 +97,8 @@
         "nodeCredentialType": "hubspotAppToken",
         "options": {}
       },
-      "id": "39079188-3c3f-5035-8393-8203790eca27",
-      "name": "The deal that just closed",
+      "id": "1d75ba18-7c0c-575c-9383-3c6ef3a11018",
+      "name": "The deal that just moved",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -234,19 +234,19 @@
               "id": "a1",
               "name": "dealId",
               "type": "string",
-              "value": "={{ $('The deal that just closed').item.json.id }}"
+              "value": "={{ $('The deal that just moved').item.json.id }}"
             },
             {
               "id": "a2",
               "name": "dealName",
               "type": "string",
-              "value": "={{ $('The deal that just closed').item.json.properties.dealname }}"
+              "value": "={{ $('The deal that just moved').item.json.properties.dealname }}"
             },
             {
               "id": "a3",
               "name": "amount",
               "type": "string",
-              "value": "={{ $('The deal that just closed').item.json.properties.amount || '' }}"
+              "value": "={{ $('The deal that just moved').item.json.properties.amount || '' }}"
             },
             {
               "id": "a4",
@@ -274,9 +274,15 @@
             },
             {
               "id": "a8",
+              "name": "preferredChannel",
+              "type": "string",
+              "value": "email"
+            },
+            {
+              "id": "a8b",
               "name": "channel",
               "type": "string",
-              "value": "={{ (() => {\n  const raw = ($json.properties.mobilephone || $json.properties.phone || '').trim();\n  if (!raw) return 'email';\n  if (raw.startsWith('+')) return 'whatsapp';\n  const known = ['Mexico','México','United States','Canada','Spain','España',\n                 'Colombia','Argentina','Chile','Peru','Perú','Brazil'];\n  return known.includes(($json.properties.country || '').trim()) ? 'whatsapp' : 'email';\n})() }}"
+              "value": "={{ $json.preferredChannel === 'whatsapp' && $json.phone ? 'whatsapp' : 'email' }}"
             },
             {
               "id": "a9",
@@ -490,7 +496,7 @@
     },
     {
       "parameters": {
-        "content": "# 2 · Ya firmaron → la evidencia llega al negocio\n\nEl **AllSign Trigger** registra un webhook en tu cuenta de AllSign y se dispara con `document.completed`. El flujo busca el negocio por el id del contrato, baja el PDF firmado y la **constancia NOM-151**, los sube a HubSpot, los deja adjuntos en una nota del negocio y lo marca como **firmado**.\n\nTu llave de AllSign necesita los permisos `webhook:read`, `webhook:write` y `webhook:delete` para que el disparador se registre y limpie lo suyo al final.",
+        "content": "# 2 · Ya firmaron → la evidencia llega al negocio\n\nEl **AllSign Trigger** registra un webhook en tu cuenta de AllSign y se dispara con `document.completed`. El flujo busca el negocio por el id del contrato, baja el PDF firmado y la **constancia NOM-151**, los sube a HubSpot, los deja adjuntos en una nota del negocio, lo marca como **firmado** y lo mueve a **Cierre ganado**: hasta que firman, el negocio no está ganado. Si prefieres mover el embudo a mano, borra el nodo *Move the deal to Closed Won* y lo demás sigue igual.\n\nTu llave de AllSign necesita los permisos `webhook:read`, `webhook:write` y `webhook:delete` para que el disparador se registre y limpie lo suyo al final.",
         "width": 620,
         "height": 360,
         "color": 4
@@ -808,6 +814,42 @@
     },
     {
       "parameters": {
+        "authentication": "appToken",
+        "resource": "deal",
+        "operation": "update",
+        "dealId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Deal for this contract').first().json.id }}"
+        },
+        "updateFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "dealstage",
+                "value": "closedwon"
+              }
+            ]
+          }
+        }
+      },
+      "id": "1e244d28-ccd4-5d34-a9c0-e3540c6e998b",
+      "name": "Move the deal to Closed Won",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        2400,
+        1100
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "",
+          "name": "HubSpot App Token"
+        }
+      }
+    },
+    {
+      "parameters": {
         "fromEmail": "no-reply@example.com",
         "toEmail": "sales@example.com",
         "subject": "=Signed: {{ $('Deal for this contract').first().json.properties.dealname }}",
@@ -820,7 +862,7 @@
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
       "position": [
-        2400,
+        2640,
         1100
       ],
       "credentials": {
@@ -837,8 +879,8 @@
         "height": 260,
         "color": 3
       },
-      "id": "fd54f484-825a-559f-9eb3-cb590d05f40a",
-      "name": "Note 28",
+      "id": "d85f8c45-5776-5d4d-bf1c-0e97c8d6a9c7",
+      "name": "Note 29",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -888,8 +930,8 @@
         "height": 320,
         "color": 4
       },
-      "id": "b0938ec6-1684-53ea-af87-0092f809ef8b",
-      "name": "Note 31",
+      "id": "e4f79464-bdba-5df6-95a0-d3b93d8ec9d2",
+      "name": "Note 32",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -1082,13 +1124,13 @@
     },
     {
       "parameters": {
-        "content": "# Instalación (5 minutos)\n\n1. **AllSign** → Desarrolladores → API keys. Crea una llave con los permisos de documentos más `webhook:read`, `webhook:write` y `webhook:delete`. Guárdala en la credencial *AllSign API*.\n2. **HubSpot** → Configuración → Integraciones → Aplicaciones privadas. Crea una con `crm.objects.contacts` (lectura y escritura), `crm.objects.deals` (lectura y escritura), `crm.schemas.deals.read` y `files`. Guarda el token en la credencial *HubSpot App Token*.\n3. En HubSpot agrega dos **propiedades de negocio**: `allsign_document_id` (texto de una línea) y `allsign_contract_status` (desplegable con `sent` y `signed`).\n4. Sube tu contrato como **plantilla** en AllSign y pega su id `tmpl_…` en *Prepare contract data*. En *Create contract in AllSign* las variables salen del negocio y de su contacto; las tres que son tuyas —quién revela, la vigencia y la jurisdicción— están escritas ahí como texto, cámbialas una vez. En este repo, `examples/NDA_Plantilla_AllSign_ES.docx` es un acuerdo de confidencialidad en español con esas mismas variables.\n5. Los dos nodos de correo traen direcciones de ejemplo (`sales@example.com`) que rebotan. Conecta tu servidor de correo y pon tu remitente y tu destinatario, o bórralos.\n6. Publica el flujo. Cierra un negocio como **Closed Won** y velo salir.\n\n7. En esa misma aplicación privada abre la pestaña **Webhooks**, pega como URL de destino la dirección de producción del nodo *HubSpot calls when a deal changes* y suscríbete a **Negocio → Propiedad modificada → Deal Stage**. No hace falta cuenta de desarrollador ni aplicación pública. El flujo tiene que estar publicado antes, si no la dirección todavía no contesta.\n\n**¿Correo o WhatsApp?** Lo decide el flujo contacto por contacto, tú no eliges: el teléfono toma la lada del país que traiga el contacto en HubSpot, y si no se sabe el país el contrato se va por correo en lugar de mandar medio número. Para forzar siempre el mismo medio, abre *Prepare contract data* y cambia el valor de `channel` por `email` o `whatsapp`.",
+        "content": "# Instalación (5 minutos)\n\n1. **AllSign** → Desarrolladores → API keys. Crea una llave con los permisos de documentos más `webhook:read`, `webhook:write` y `webhook:delete`. Guárdala en la credencial *AllSign API*.\n2. **HubSpot** → Configuración → Integraciones → Aplicaciones privadas. Crea una con `crm.objects.contacts` (lectura y escritura), `crm.objects.deals` (lectura y escritura), `crm.schemas.deals.read` y `files`. Guarda el token en la credencial *HubSpot App Token*.\n3. En HubSpot agrega dos **propiedades de negocio**: `allsign_document_id` (texto de una línea) y `allsign_contract_status` (desplegable con `sent` y `signed`).\n4. Sube tu contrato como **plantilla** en AllSign y pega su id `tmpl_…` en *Prepare contract data*. En *Create contract in AllSign* las variables salen del negocio y de su contacto; las tres que son tuyas —quién revela, la vigencia y la jurisdicción— están escritas ahí como texto, cámbialas una vez. En este repo, `examples/NDA_Plantilla_AllSign_ES.docx` es un acuerdo de confidencialidad en español con esas mismas variables.\n5. Los dos nodos de correo traen direcciones de ejemplo (`sales@example.com`) que rebotan. Conecta tu servidor de correo y pon tu remitente y tu destinatario, o bórralos.\n6. Publica el flujo. Mueve un negocio a **Contrato enviado** y velo salir.\n\n7. En esa misma aplicación privada abre la pestaña **Webhooks**, pega como URL de destino la dirección de producción del nodo *HubSpot calls when a deal changes* y suscríbete a **Negocio → Propiedad modificada → Deal Stage**. No hace falta cuenta de desarrollador ni aplicación pública. El flujo tiene que estar publicado antes, si no la dirección todavía no contesta.\n\n**¿Correo o WhatsApp?** Lo eliges tú, en *Prepare contract data*, con el campo `preferredChannel`. Viene en `email`; cámbialo a `whatsapp` si tu equipo manda por ahí. Un solo detalle: para WhatsApp el teléfono tiene que quedar completo con la lada del país que traiga el contacto en HubSpot, y si no se puede, ese contrato se va por correo en lugar de fallar.",
         "width": 780,
         "height": 520,
         "color": 6
       },
-      "id": "28899b73-f589-5a89-a42d-1ad496a6928f",
-      "name": "Note 40",
+      "id": "aed2ca88-5233-5d04-8fb6-4cb74a9c096c",
+      "name": "Note 41",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -1113,25 +1155,25 @@
       "main": [
         [
           {
-            "node": "Moved to Closed Won?",
+            "node": "Moved to Contract Sent?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Moved to Closed Won?": {
+    "Moved to Contract Sent?": {
       "main": [
         [
           {
-            "node": "The deal that just closed",
+            "node": "The deal that just moved",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "The deal that just closed": {
+    "The deal that just moved": {
       "main": [
         [
           {
@@ -1359,6 +1401,17 @@
       ]
     },
     "Mark contract as signed": {
+      "main": [
+        [
+          {
+            "node": "Move the deal to Closed Won",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move the deal to Closed Won": {
       "main": [
         [
           {
