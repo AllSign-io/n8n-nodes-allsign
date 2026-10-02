@@ -234,14 +234,19 @@ prep = node("Prepare contract data", "n8n-nodes-base.set", 3.4, {
                   "  return code ? '+' + code + digits : '';\n"
                   "})() }}"},
         {"id": "a7", "name": "company", "type": "string", "value": "={{ $json.properties.company || '' }}"},
-        {"id": "a8", "name": "preferredChannel", "type": "string",
-         # Lo elige quien instala la plantilla, no el dato del contacto. Cambia
-         # este valor a whatsapp si tu equipo manda por ahi.
-         "value": "email"},
-        {"id": "a8b", "name": "channel", "type": "string",
-         # Respeta la preferencia, pero cae a correo si el telefono no quedo
-         # completo: mandar un numero a medias no llega a nadie.
-         "value": "={{ $json.preferredChannel === 'whatsapp' && $json.phone ? 'whatsapp' : 'email' }}"},
+        {"id": "a8", "name": "channel", "type": "string",
+         # El medio lo eliges tu en la primera linea, no lo decide el dato. Si
+         # pides WhatsApp pero el telefono no se puede completar con la lada del
+         # pais, ese contrato se va por correo: medio numero no llega a nadie.
+         "value": "={{ (() => {\n"
+                  "  const prefiere = 'email';   // cambia a 'whatsapp' si tu equipo manda por ahi\n"
+                  "  const raw = ($json.properties.mobilephone || $json.properties.phone || '').trim();\n"
+                  "  if (!raw) return 'email';\n"
+                  "  const known = ['Mexico','M\u00e9xico','United States','Canada','Spain','Espa\u00f1a',\n"
+                  "                 'Colombia','Argentina','Chile','Peru','Per\u00fa','Brazil'];\n"
+                  "  const completo = raw.startsWith('+') || known.includes(($json.properties.country || '').trim());\n"
+                  "  return prefiere === 'whatsapp' && completo ? 'whatsapp' : 'email';\n"
+                  "})() }}"},
         {"id": "a9", "name": "templateId", "type": "string", "value": TEMPLATE_ID},
     ]},
     "options": {},
@@ -515,11 +520,10 @@ sticky(
      "suscríbete a **Negocio → Propiedad modificada → Deal Stage**. No hace falta cuenta de "
      "desarrollador ni aplicación pública. El flujo tiene que estar publicado antes, si no "
      "la dirección todavía no contesta.\n\n" if WEBHOOK else "") +
-    "**¿Correo o WhatsApp?** Lo eliges tú, en *Prepare contract data*, con el campo "
-    "`preferredChannel`. Viene en `email`; cámbialo a `whatsapp` si tu equipo manda por "
-    "ahí. Un solo detalle: para WhatsApp el teléfono tiene que quedar completo con la lada "
-    "del país que traiga el contacto en HubSpot, y si no se puede, ese contrato se va por "
-    "correo en lugar de fallar.",
+    "**¿Correo o WhatsApp?** Lo eliges tú: abre *Prepare contract data*, campo `channel`, "
+    "y en la primera línea cambia `prefiere` de `email` a `whatsapp`. Para WhatsApp el "
+    "teléfono tiene que poder completarse con la lada del país que traiga el contacto en "
+    "HubSpot; si no se puede, ese contrato se va por correo en lugar de fallar.",
     620, Y1 - 560, 780, 520, color=6)
 
 workflow = {
