@@ -20,6 +20,12 @@ ALLSIGN_CRED = {"id": "smokeAllSignDev01", "name": "[smoke] AllSign dev"} if LOC
     else {"id": "", "name": "AllSign API"}
 TEMPLATE_ID = "tmpl_95f355eeb6ba4bfebf73a797e37434d4" if LOCAL else "tmpl_REPLACE_ME"
 
+# n8n guarda la ruta de cada disparador en una tabla global: si las dos plantillas
+# piden la misma, la segunda que prendas se queda sin registrar. Cada plantilla
+# estrena las suyas.
+def wh(nombre):
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, nombre + ("-realtime" if WEBHOOK else "")))
+
 HS = "https://api.hubapi.com"
 
 nodes = []
@@ -156,7 +162,7 @@ if WEBHOOK:
         "httpMethod": "POST",
         "path": "hubspot-deal-closed",
         "options": {},
-    }, -720, Y1, webhookId=str(uuid.uuid5(uuid.NAMESPACE_URL, "hubspot-deal-closed")))
+    }, -720, Y1, webhookId=wh("hubspot-deal-closed"))
 
     split1 = node("One item per event", "n8n-nodes-base.splitOut", 1, {
         "fieldToSplitOut": "body", "options": {},
@@ -327,7 +333,7 @@ sticky(
 trig = node("Contract signed", "n8n-nodes-allsign.allsignTrigger", 1, {
     "events": ["document.completed"],
     "endpointDescription": "n8n — HubSpot contract template",
-}, 0, Y2, cred={"allSignApi": ALLSIGN_CRED}, webhookId=str(uuid.uuid5(uuid.NAMESPACE_URL, "allsign-hubspot-trigger")))
+}, 0, Y2, cred={"allSignApi": ALLSIGN_CRED}, webhookId=wh("allsign-hubspot-trigger"))
 
 s2 = hs_search("Deal for this contract", [
     {"propertyName": "allsign_document_id", "operator": "EQ", "value": "={{ $json.data.documentId }}"},
@@ -349,7 +355,7 @@ ready = node("Evidence ready?", "n8n-nodes-base.if", 2.2, {
 }, 720, Y2)
 
 wait_ev = node("Wait 1 minute", "n8n-nodes-base.wait", 1.1, {"amount": 60, "unit": "seconds"}, 720, Y2 + 200,
-               webhookId=str(uuid.uuid5(uuid.NAMESPACE_URL, "wait-evidence")))
+               webhookId=wh("wait-evidence"))
 
 files = node("List files to attach", "n8n-nodes-base.code", 2, {
     "jsCode": (
@@ -487,7 +493,7 @@ remind = allsign("Remind signer", {
 }, 1440, Y3 + 160, onError="continueRegularOutput")
 
 pause = node("Pause 7 seconds", "n8n-nodes-base.wait", 1.1, {"amount": 7, "unit": "seconds"}, 1680, Y3 + 160,
-             webhookId=str(uuid.uuid5(uuid.NAMESPACE_URL, "wait-remind")))
+             webhookId=wh("wait-remind"))
 
 for a, b in [(t3, s3), (s3, signers), (signers, split), (split, pending), (pending, loop), (remind, pause), (pause, loop)]:
     link(a, b)
