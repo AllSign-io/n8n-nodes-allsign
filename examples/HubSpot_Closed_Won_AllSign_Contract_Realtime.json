@@ -1,9 +1,9 @@
 {
-  "name": "Close HubSpot deals with NOM-151 compliant e-signature and WhatsApp delivery",
+  "name": "Close HubSpot deals with NOM-151 compliant e-signature and WhatsApp delivery — real time",
   "nodes": [
     {
       "parameters": {
-        "content": "# 1 · El negocio avanza → sale el contrato\n\nCada 5 minutos el flujo le pregunta a HubSpot por los negocios en **Contrato enviado** que todavía no tienen contrato de AllSign, arma el documento con tu plantilla y se lo manda al contacto. Mover el negocio a esa etapa es justo lo que el vendedor ya hace cuando manda un contrato.\n\nLa invitación va por **WhatsApp** cuando el teléfono del contacto se puede completar con la lada de su país, y por **correo** cuando no: mandar medio número no le llega a nadie. El negocio guarda el id y el estado del contrato (`allsign_document_id`, `allsign_contract_status`) para no mandarlo dos veces.",
+        "content": "# 1 · El negocio avanza → sale el contrato\n\nHubSpot avisa en el momento en que un negocio pasa a **Contrato enviado**. El flujo lee el negocio, descarta los que ya tienen contrato, arma el documento con tu plantilla de AllSign y se lo manda al contacto. Mover el negocio a esa etapa es justo lo que el vendedor ya hace cuando manda un contrato.\n\nLa invitación va por **WhatsApp** cuando el teléfono del contacto se puede completar con la lada de su país, y por **correo** cuando no: mandar medio número no le llega a nadie. El negocio guarda el id y el estado del contrato (`allsign_document_id`, `allsign_contract_status`) para no mandarlo dos veces.",
         "width": 620,
         "height": 340,
         "color": 4
@@ -19,64 +19,90 @@
     },
     {
       "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "minutes",
-              "minutesInterval": 5
-            }
-          ]
-        }
+        "httpMethod": "POST",
+        "path": "hubspot-deal-closed",
+        "options": {}
       },
-      "id": "8829e42b-e3c7-5990-bff1-a1192e9ac2f4",
-      "name": "Every 5 minutes",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
+      "id": "34ae73bd-a34e-598d-bd80-9cdf8a063e10",
+      "name": "HubSpot calls when a deal changes",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
       "position": [
-        0,
+        -720,
+        300
+      ],
+      "webhookId": "c98fddf6-38b7-55de-9696-4cf3cddd365b"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "body",
+        "options": {}
+      },
+      "id": "084298cf-f8fe-5dbf-a8c0-a03dad2380e3",
+      "name": "One item per event",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -480,
         300
       ]
     },
     {
       "parameters": {
-        "authentication": "appToken",
-        "resource": "deal",
-        "operation": "search",
-        "returnAll": true,
-        "filterGroupsUi": {
-          "filterGroupsValues": [
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
             {
-              "filtersUi": {
-                "filterValues": [
-                  {
-                    "propertyName": "dealstage",
-                    "operator": "EQ",
-                    "value": "contractsent"
-                  },
-                  {
-                    "propertyName": "allsign_document_id",
-                    "operator": "NOT_HAS_PROPERTY"
-                  }
-                ]
+              "id": "prop",
+              "leftValue": "={{ $json.propertyName }}",
+              "rightValue": "dealstage",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "val",
+              "leftValue": "={{ $json.propertyValue }}",
+              "rightValue": "contractsent",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
               }
             }
-          ]
+          ],
+          "combinator": "and"
         },
-        "additionalFields": {
-          "properties": [
-            "dealname",
-            "amount",
-            "closedate",
-            "allsign_document_id"
-          ]
-        }
+        "options": {}
       },
-      "id": "6f29f6bc-bc21-590e-8588-7db7ec03dd41",
-      "name": "Deals ready for their contract",
-      "type": "n8n-nodes-base.hubspot",
+      "id": "33a73add-9050-51bb-be2e-fdb55bb268f2",
+      "name": "Moved to Contract Sent?",
+      "type": "n8n-nodes-base.filter",
       "typeVersion": 2.2,
       "position": [
-        240,
+        -240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.hubapi.com/crm/v3/objects/deals/{{ $json.objectId }}?properties=dealname,amount,closedate,allsign_document_id",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "id": "1d75ba18-7c0c-575c-9383-3c6ef3a11018",
+      "name": "The deal that just moved",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
         300
       ],
       "credentials": {
@@ -85,6 +111,40 @@
           "name": "HubSpot App Token"
         }
       }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "nodoc",
+              "leftValue": "={{ $json.properties.allsign_document_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a9ffc89b-068f-53ff-bfe7-df3c147df4ff",
+      "name": "No contract on it yet?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        240,
+        300
+      ]
     },
     {
       "parameters": {
@@ -174,19 +234,19 @@
               "id": "a1",
               "name": "dealId",
               "type": "string",
-              "value": "={{ $('Deals ready for their contract').item.json.id }}"
+              "value": "={{ $('The deal that just moved').item.json.id }}"
             },
             {
               "id": "a2",
               "name": "dealName",
               "type": "string",
-              "value": "={{ $('Deals ready for their contract').item.json.properties.dealname }}"
+              "value": "={{ $('The deal that just moved').item.json.properties.dealname }}"
             },
             {
               "id": "a3",
               "name": "amount",
               "type": "string",
-              "value": "={{ $('Deals ready for their contract').item.json.properties.amount || '' }}"
+              "value": "={{ $('The deal that just moved').item.json.properties.amount || '' }}"
             },
             {
               "id": "a4",
@@ -453,8 +513,8 @@
         "height": 360,
         "color": 4
       },
-      "id": "10371405-e149-5269-b010-da9e6ade20b0",
-      "name": "Note 12",
+      "id": "ca82549e-cd0c-5460-b7bd-2bfa8b1505f1",
+      "name": "Note 15",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -483,7 +543,7 @@
           "name": "AllSign API"
         }
       },
-      "webhookId": "089d85d6-fc54-5d11-9209-a48cdf12df65"
+      "webhookId": "28afc0fc-01da-5315-9ac2-a522109487b5"
     },
     {
       "parameters": {
@@ -596,7 +656,7 @@
         720,
         1300
       ],
-      "webhookId": "cc00f265-444e-5de4-8e19-36495455e8ea"
+      "webhookId": "38279e46-1a2e-52c1-a88f-4dc07f28eea3"
     },
     {
       "parameters": {
@@ -831,8 +891,8 @@
         "height": 260,
         "color": 3
       },
-      "id": "8be12ae4-ad66-54be-aafb-6bc22eabd864",
-      "name": "Note 26",
+      "id": "d85f8c45-5776-5d4d-bf1c-0e97c8d6a9c7",
+      "name": "Note 29",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -882,8 +942,8 @@
         "height": 320,
         "color": 4
       },
-      "id": "d85f8c45-5776-5d4d-bf1c-0e97c8d6a9c7",
-      "name": "Note 29",
+      "id": "e4f79464-bdba-5df6-95a0-d3b93d8ec9d2",
+      "name": "Note 32",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -1072,17 +1132,17 @@
         1680,
         2760
       ],
-      "webhookId": "6a2b861d-1ca2-55d7-9871-40d70b5273cc"
+      "webhookId": "37c7337c-fe93-58e1-adf7-8189ecbbf176"
     },
     {
       "parameters": {
-        "content": "# Instalación (5 minutos)\n\n1. **AllSign** → Desarrolladores → API keys. Crea una llave con los permisos de documentos más `webhook:read`, `webhook:write` y `webhook:delete`. Guárdala en la credencial *AllSign API*.\n2. **HubSpot** → Configuración → Integraciones → Aplicaciones privadas. Crea una con `crm.objects.contacts` (lectura y escritura), `crm.objects.deals` (lectura y escritura), `crm.schemas.deals.read` y `files`. Guarda el token en la credencial *HubSpot App Token*.\n3. En HubSpot agrega dos **propiedades de negocio**: `allsign_document_id` (texto de una línea) y `allsign_contract_status` (desplegable con `sent` y `signed`).\n4. Sube tu contrato como **plantilla** en AllSign y pega su id `tmpl_…` en *Prepare contract data*. En ese mismo nodo, más abajo, están las tres que salen de ti y no del CRM: **empresa_emisora**, **vigencia** y **jurisdiccion**. Cámbialas una vez. En este repo, `examples/NDA_Plantilla_AllSign_ES.docx` es un acuerdo de confidencialidad en español con esas mismas variables.\n5. Los dos nodos de correo traen direcciones de ejemplo (`sales@example.com`) que rebotan. Conecta tu servidor de correo y pon tu remitente y tu destinatario, o bórralos.\n6. Publica el flujo. Mueve un negocio a **Contrato enviado** y velo salir.\n\n**¿Correo o WhatsApp?** Lo eliges tú: abre *Prepare contract data*, campo `channel`, y en la primera línea cambia `prefiere` de `email` a `whatsapp`. Para WhatsApp el teléfono tiene que poder completarse con la lada del país que traiga el contacto en HubSpot; si no se puede, ese contrato se va por correo en lugar de fallar.",
+        "content": "# Instalación (5 minutos)\n\n1. **AllSign** → Desarrolladores → API keys. Crea una llave con los permisos de documentos más `webhook:read`, `webhook:write` y `webhook:delete`. Guárdala en la credencial *AllSign API*.\n2. **HubSpot** → Configuración → Integraciones → Aplicaciones privadas. Crea una con `crm.objects.contacts` (lectura y escritura), `crm.objects.deals` (lectura y escritura), `crm.schemas.deals.read` y `files`. Guarda el token en la credencial *HubSpot App Token*.\n3. En HubSpot agrega dos **propiedades de negocio**: `allsign_document_id` (texto de una línea) y `allsign_contract_status` (desplegable con `sent` y `signed`).\n4. Sube tu contrato como **plantilla** en AllSign y pega su id `tmpl_…` en *Prepare contract data*. En ese mismo nodo, más abajo, están las tres que salen de ti y no del CRM: **empresa_emisora**, **vigencia** y **jurisdiccion**. Cámbialas una vez. En este repo, `examples/NDA_Plantilla_AllSign_ES.docx` es un acuerdo de confidencialidad en español con esas mismas variables.\n5. Los dos nodos de correo traen direcciones de ejemplo (`sales@example.com`) que rebotan. Conecta tu servidor de correo y pon tu remitente y tu destinatario, o bórralos.\n6. Publica el flujo. Mueve un negocio a **Contrato enviado** y velo salir.\n\n7. En esa misma aplicación privada abre la pestaña **Webhooks**, pega como URL de destino la dirección de producción del nodo *HubSpot calls when a deal changes* y suscríbete a **Negocio → Propiedad modificada → Deal Stage**. No hace falta cuenta de desarrollador ni aplicación pública. El flujo tiene que estar publicado antes, si no la dirección todavía no contesta.\n\n**¿Correo o WhatsApp?** Lo eliges tú: abre *Prepare contract data*, campo `channel`, y en la primera línea cambia `prefiere` de `email` a `whatsapp`. Para WhatsApp el teléfono tiene que poder completarse con la lada del país que traiga el contacto en HubSpot; si no se puede, ese contrato se va por correo en lugar de fallar.",
         "width": 780,
         "height": 520,
         "color": 6
       },
-      "id": "6a8203a5-3277-5c24-9156-acb1a926ed80",
-      "name": "Note 38",
+      "id": "aed2ca88-5233-5d04-8fb6-4cb74a9c096c",
+      "name": "Note 41",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -1092,18 +1152,51 @@
     }
   ],
   "connections": {
-    "Every 5 minutes": {
+    "HubSpot calls when a deal changes": {
       "main": [
         [
           {
-            "node": "Deals ready for their contract",
+            "node": "One item per event",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Deals ready for their contract": {
+    "One item per event": {
+      "main": [
+        [
+          {
+            "node": "Moved to Contract Sent?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Moved to Contract Sent?": {
+      "main": [
+        [
+          {
+            "node": "The deal that just moved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "The deal that just moved": {
+      "main": [
+        [
+          {
+            "node": "No contract on it yet?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No contract on it yet?": {
       "main": [
         [
           {
