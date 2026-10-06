@@ -2,6 +2,17 @@
 
 All notable changes to `n8n-nodes-allsign` will be documented in this file.
 
+## [0.7.0] — 2026-10-06
+
+### ✨ Added
+
+- **AllSign Trigger** — a trigger node, so a workflow can *start* from AllSign instead of only acting on it. Until now the node could create and send documents, but nothing in n8n knew when one got signed: you had to poll, or wire a bare Webhook node and verify the signature by hand. The Trigger registers its own endpoint through `POST /v3/webhooks` when the workflow is activated and removes it on deactivation, so there is nothing to set up in the AllSign dashboard. The event list is loaded live from `GET /v3/webhooks/events`, which means a new AllSign event shows up in the dropdown without shipping a release.
+- **Standard Webhooks signature verification** — every delivery is checked against `{webhook-id}.{webhook-timestamp}.{raw body}` with an HMAC, in constant time, and replays older than five minutes are rejected. Implemented in-tree rather than through a dependency: it is fifteen lines, and a community node with extra packages is a bigger ask of n8n's review. The API key needs `webhook:read`, `webhook:write` and `webhook:delete`.
+
+### 🔐 Credentials
+
+- The AllSign API key used by the Trigger needs three webhook scopes on top of `document:*`. A key without them fails at activation with a clear message instead of silently never firing.
+
 ## [0.6.0] — 2026-08-26
 
 ### 🐛 Fixed
