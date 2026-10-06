@@ -188,6 +188,12 @@ prep = node("Prepare contract data", "n8n-nodes-base.set", 3.4, {
                   "  return prefiere === 'whatsapp' && completo ? 'whatsapp' : 'email';\n"
                   "})() }}"},
         {"id": "a9", "name": "templateId", "type": "string", "value": TEMPLATE_ID},
+        # Los tres valores que no vienen del CRM sino de ti. Van aqui, con nombre
+        # propio, y no escondidos dentro del JSON del contrato: son los que cada
+        # quien cambia al instalar la plantilla.
+        {"id": "a10", "name": "empresa_emisora", "type": "string", "value": "Tu empresa"},
+        {"id": "a11", "name": "vigencia", "type": "string", "value": "dos años"},
+        {"id": "a12", "name": "jurisdiccion", "type": "string", "value": "Ciudad de México"},
     ]},
     "options": {},
 }, 1200, Y1)
@@ -216,8 +222,8 @@ create = allsign("Create contract in AllSign", {
     "templateValues": "={{ JSON.stringify({ nombre_cliente: $json.contactName, "
                       "empresa_cliente: $json.company || $json.dealName, correo_cliente: $json.email, "
                       "objeto: $json.dealName, fecha_efectiva: $today.toFormat('dd/MM/yyyy'), "
-                      "empresa_emisora: 'Tu empresa', vigencia: 'dos años', "
-                      "jurisdiccion: 'Ciudad de México' }) }}",
+                      "empresa_emisora: $json.empresa_emisora, vigencia: $json.vigencia, "
+                      "jurisdiccion: $json.jurisdiccion }) }}",
     "signers": {"signerValues": [{
         "name": "={{ $json.contactName }}",
         "deliveryMethod": "={{ $json.channel }}",
@@ -446,9 +452,9 @@ sticky(
     "3. En HubSpot agrega dos **propiedades de negocio**: `allsign_document_id` (texto de "
     "una línea) y `allsign_contract_status` (desplegable con `sent` y `signed`).\n"
     "4. Sube tu contrato como **plantilla** en AllSign y pega su id `tmpl_…` en *Prepare "
-    "contract data*. En *Create contract in AllSign* las variables salen del negocio y de "
-    "su contacto; las tres que son tuyas —quién revela, la vigencia y la jurisdicción— "
-    "están escritas ahí como texto, cámbialas una vez. En este repo, "
+    "contract data*. En ese mismo nodo, más abajo, están las tres que salen de ti y no "
+    "del CRM: **empresa_emisora**, **vigencia** y **jurisdiccion**. Cámbialas una vez. "
+    "En este repo, "
     "`examples/NDA_Plantilla_AllSign_ES.docx` es un acuerdo de confidencialidad en español "
     "con esas mismas variables.\n"
     "5. Los dos nodos de correo traen direcciones de ejemplo (`sales@example.com`) que "
