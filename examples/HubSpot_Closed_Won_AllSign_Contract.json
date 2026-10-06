@@ -223,6 +223,24 @@
               "name": "templateId",
               "type": "string",
               "value": "tmpl_REPLACE_ME"
+            },
+            {
+              "id": "a10",
+              "name": "empresa_emisora",
+              "type": "string",
+              "value": "Tu empresa"
+            },
+            {
+              "id": "a11",
+              "name": "vigencia",
+              "type": "string",
+              "value": "dos años"
+            },
+            {
+              "id": "a12",
+              "name": "jurisdiccion",
+              "type": "string",
+              "value": "Ciudad de México"
             }
           ]
         },
@@ -309,7 +327,7 @@
         "documentName": "=Contract — {{ $json.dealName }}",
         "source": "template",
         "templateId": "={{ $json.templateId }}",
-        "templateValues": "={{ JSON.stringify({ nombre_cliente: $json.contactName, empresa_cliente: $json.company || $json.dealName, correo_cliente: $json.email, objeto: $json.dealName, fecha_efectiva: $today.toFormat('dd/MM/yyyy'), empresa_emisora: 'Tu empresa', vigencia: 'dos años', jurisdiccion: 'Ciudad de México' }) }}",
+        "templateValues": "={{ JSON.stringify({ nombre_cliente: $json.contactName, empresa_cliente: $json.company || $json.dealName, correo_cliente: $json.email, objeto: $json.dealName, fecha_efectiva: $today.toFormat('dd/MM/yyyy'), empresa_emisora: $json.empresa_emisora, vigencia: $json.vigencia, jurisdiccion: $json.jurisdiccion }) }}",
         "signers": {
           "signerValues": [
             {
@@ -1058,7 +1076,7 @@
     },
     {
       "parameters": {
-        "content": "# Instalación (5 minutos)\n\n1. **AllSign** → Desarrolladores → API keys. Crea una llave con los permisos de documentos más `webhook:read`, `webhook:write` y `webhook:delete`. Guárdala en la credencial *AllSign API*.\n2. **HubSpot** → Configuración → Integraciones → Aplicaciones privadas. Crea una con `crm.objects.contacts` (lectura y escritura), `crm.objects.deals` (lectura y escritura), `crm.schemas.deals.read` y `files`. Guarda el token en la credencial *HubSpot App Token*.\n3. En HubSpot agrega dos **propiedades de negocio**: `allsign_document_id` (texto de una línea) y `allsign_contract_status` (desplegable con `sent` y `signed`).\n4. Sube tu contrato como **plantilla** en AllSign y pega su id `tmpl_…` en *Prepare contract data*. En *Create contract in AllSign* las variables salen del negocio y de su contacto; las tres que son tuyas —quién revela, la vigencia y la jurisdicción— están escritas ahí como texto, cámbialas una vez. En este repo, `examples/NDA_Plantilla_AllSign_ES.docx` es un acuerdo de confidencialidad en español con esas mismas variables.\n5. Los dos nodos de correo traen direcciones de ejemplo (`sales@example.com`) que rebotan. Conecta tu servidor de correo y pon tu remitente y tu destinatario, o bórralos.\n6. Publica el flujo. Mueve un negocio a **Contrato enviado** y velo salir.\n\n**¿Correo o WhatsApp?** Lo eliges tú: abre *Prepare contract data*, campo `channel`, y en la primera línea cambia `prefiere` de `email` a `whatsapp`. Para WhatsApp el teléfono tiene que poder completarse con la lada del país que traiga el contacto en HubSpot; si no se puede, ese contrato se va por correo en lugar de fallar.",
+        "content": "# Instalación (5 minutos)\n\n1. **AllSign** → Desarrolladores → API keys. Crea una llave con los permisos de documentos más `webhook:read`, `webhook:write` y `webhook:delete`. Guárdala en la credencial *AllSign API*.\n2. **HubSpot** → Configuración → Integraciones → Aplicaciones privadas. Crea una con `crm.objects.contacts` (lectura y escritura), `crm.objects.deals` (lectura y escritura), `crm.schemas.deals.read` y `files`. Guarda el token en la credencial *HubSpot App Token*.\n3. En HubSpot agrega dos **propiedades de negocio**: `allsign_document_id` (texto de una línea) y `allsign_contract_status` (desplegable con `sent` y `signed`).\n4. Sube tu contrato como **plantilla** en AllSign y pega su id `tmpl_…` en *Prepare contract data*. En ese mismo nodo, más abajo, están las tres que salen de ti y no del CRM: **empresa_emisora**, **vigencia** y **jurisdiccion**. Cámbialas una vez. En este repo, `examples/NDA_Plantilla_AllSign_ES.docx` es un acuerdo de confidencialidad en español con esas mismas variables.\n5. Los dos nodos de correo traen direcciones de ejemplo (`sales@example.com`) que rebotan. Conecta tu servidor de correo y pon tu remitente y tu destinatario, o bórralos.\n6. Publica el flujo. Mueve un negocio a **Contrato enviado** y velo salir.\n\n**¿Correo o WhatsApp?** Lo eliges tú: abre *Prepare contract data*, campo `channel`, y en la primera línea cambia `prefiere` de `email` a `whatsapp`. Para WhatsApp el teléfono tiene que poder completarse con la lada del país que traiga el contacto en HubSpot; si no se puede, ese contrato se va por correo en lugar de fallar.",
         "width": 780,
         "height": 520,
         "color": 6
