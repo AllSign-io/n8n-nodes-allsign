@@ -6,6 +6,7 @@ Uso:  python3 examples/generate_nda_es.py [ruta-de-salida.docx]
 """
 
 import sys
+from pathlib import Path
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -17,7 +18,10 @@ AZUL = RGBColor(0x00, 0x7B, 0xFF)
 TINTA = RGBColor(0x1A, 0x1A, 0x2E)
 GRIS = RGBColor(0x55, 0x55, 0x55)
 
-SALIDA = sys.argv[1] if len(sys.argv) > 1 else "examples/NDA_Plantilla_AllSign_ES.docx"
+# Junto al script, no junto a donde lo corriste: si no, correrlo desde
+# examples/ truena con un error de archivo que no dice nada.
+SALIDA = sys.argv[1] if len(sys.argv) > 1 else str(
+    Path(__file__).resolve().parent / "NDA_Plantilla_AllSign_ES.docx")
 
 
 def sombrear(celda, color):
