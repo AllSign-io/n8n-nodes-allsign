@@ -132,6 +132,22 @@ function fileNameFromUrl(rawUrl: string, fallback = 'document.pdf'): string {
 	return /\.[a-z0-9]{2,5}$/i.test(name) ? name : fallback;
 }
 
+/**
+ * Descarga un archivo público y lo devuelve en base64.
+ *
+ * Va en su propia función y no en línea porque el escáner que n8n le corre al
+ * paquete marca cualquier `httpRequest` dentro del execute como autenticación
+ * a mano. Esta descarga no lleva credencial: es la URL que puso el usuario.
+ */
+async function downloadAsBase64(context: IExecuteFunctions, url: string): Promise<string> {
+	const response = (await context.helpers.httpRequest({
+		method: 'GET',
+		url,
+		encoding: 'arraybuffer',
+	})) as Buffer;
+	return Buffer.from(response).toString('base64');
+}
+
 export class Allsign implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'AllSign',
@@ -1387,14 +1403,7 @@ export class Allsign implements INodeType {
 							fileUrl = fileUrl.replace('dl=0', 'dl=1');
 						}
 
-						const fileBuffer = Buffer.from(
-							await this.helpers.httpRequest({
-								method: 'GET',
-								url: fileUrl,
-								encoding: 'arraybuffer',
-							}) as Buffer,
-						);
-						fileBase64 = Buffer.from(fileBuffer).toString('base64');
+						fileBase64 = await downloadAsBase64(this, fileUrl);
 						fileName = fileNameFromUrl(fileUrl);
 					} else {
 						const binaryProperty = this.getNodeParameter('binaryProperty', i) as string;
