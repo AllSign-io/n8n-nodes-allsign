@@ -62,7 +62,6 @@
 	},
 	"devDependencies": {
 		"@n8n/node-cli": "*",
-		"@n8n/scan-community-package": "^0.38.0",
 		"@types/jest": "^30.0.0",
 		"@types/node": "^25.2.2",
 		"eslint": "9.32.0",

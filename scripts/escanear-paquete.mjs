@@ -3,7 +3,10 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { analyzePackage } from '@n8n/scan-community-package/scanner/scanner.mjs';
+
+const ESCANER = '@n8n/scan-community-package@0.38.0';
+execFileSync('npm', ['i', '--no-save', '--silent', ESCANER], { stdio: 'inherit' });
+const { analyzePackage } = await import('@n8n/scan-community-package/scanner/scanner.mjs');
 
 const dir = mkdtempSync(join(tmpdir(), 'allsign-scan-'));
 const tgz = execFileSync('npm', ['pack', '--silent'], { encoding: 'utf8' }).trim().split('\n').pop();
