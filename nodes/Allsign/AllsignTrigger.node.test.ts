@@ -1,4 +1,5 @@
 import { createHmac, randomBytes } from 'node:crypto';
+import { NodeApiError } from 'n8n-workflow';
 import { AllsignTrigger, verifyStandardWebhook } from './AllsignTrigger.node';
 
 /**
@@ -321,6 +322,208 @@ describe('AllSign Trigger', () => {
 			const [, opciones] = contexto.helpers.httpRequestWithAuthentication.mock.calls[0];
 			expect(opciones.url).toBe('https://api.allsign.io/v3/webhooks/events');
 			expect(opciones.method).toBe('GET');
+		});
+	});
+
+	/**
+	 * El ciclo de vida del endpoint: alta, comprobación y baja.
+	 *
+	 * Aquí vivían los dos agujeros que encontró la auditoría. `checkExists`
+	 * buscaba su id dentro de la LISTA, que devuelve 20, así que en una cuenta
+	 * con varios endpoints daba el suyo por muerto y creaba un duplicado. Y
+	 * `delete` se tragaba cualquier error y olvidaba el id, dejando endpoints
+	 * vivos en AllSign para siempre.
+	 */
+	describe('Ciclo de vida del endpoint', () => {
+		const NODO = {
+			name: 'AllSign Trigger',
+			type: 'n8n-nodes-allsign.allsignTrigger',
+			typeVersion: 1,
+			position: [0, 0],
+			parameters: {},
+		};
+		const URL_N8N = 'https://n8n.example.com/webhook/abc';
+		const BASE = 'https://api.allsign.io';
+		const TODOS_LOS_SCOPES = ['document:*', 'webhook:read', 'webhook:write', 'webhook:delete'];
+
+		/** Un error como el que lanza httpRequestWithAuthentication: el código va como texto. */
+		const errorHttp = (status: number) =>
+			new NodeApiError(NODO as never, { message: 'falló', response: { status } } as never);
+
+		function contexto(
+			staticData: Record<string, unknown>,
+			responder: (opciones: { method?: string; url: string }) => unknown,
+			parametros: Record<string, unknown> = {},
+		) {
+			const peticiones: Array<{ method: string; url: string; body?: unknown }> = [];
+			return {
+				peticiones,
+				staticData,
+				hook: {
+					getNode: () => NODO,
+					getNodeWebhookUrl: () => URL_N8N,
+					getWorkflowStaticData: () => staticData,
+					getNodeParameter: (nombre: string, porDefecto?: unknown) =>
+						nombre in parametros ? parametros[nombre] : porDefecto,
+					getCredentials: jest.fn().mockResolvedValue({ baseUrl: BASE }),
+					helpers: {
+						httpRequestWithAuthentication: jest.fn(async (_cred: string, opciones: never) => {
+							const o = opciones as { method?: string; url: string; body?: unknown };
+							peticiones.push({ method: o.method ?? 'GET', url: o.url, body: o.body });
+							return responder(o);
+						}),
+					},
+				},
+			};
+		}
+
+		const hooks = () => new AllsignTrigger().webhookMethods.default;
+
+		describe('checkExists', () => {
+			it('pregunta por SU id, no por la lista: una cuenta con 20+ endpoints ya no duplica', async () => {
+				const c = contexto({ webhookId: 'whe_1', secret: 'whsec_x' }, () => ({
+					data: { id: 'whe_1', url: URL_N8N, status: 'enabled' },
+				}));
+
+				await expect(hooks().checkExists.call(c.hook as never)).resolves.toBe(true);
+				expect(c.peticiones).toHaveLength(1);
+				expect(c.peticiones[0]).toMatchObject({ method: 'GET', url: `${BASE}/v3/webhooks/whe_1` });
+			});
+
+			it('con 404 olvida todo y deja que n8n lo vuelva a crear', async () => {
+				const c = contexto({ webhookId: 'whe_1', secret: 'whsec_x', seenEventIds: ['evt_1'] }, () => {
+					throw errorHttp(404);
+				});
+
+				await expect(hooks().checkExists.call(c.hook as never)).resolves.toBe(false);
+				expect(c.staticData).toEqual({});
+			});
+
+			it('con 500 falla la activación en vez de crear un duplicado', async () => {
+				const c = contexto({ webhookId: 'whe_1', secret: 'whsec_x' }, () => {
+					throw errorHttp(500);
+				});
+
+				await expect(hooks().checkExists.call(c.hook as never)).rejects.toThrow();
+				expect(c.staticData.webhookId).toBe('whe_1');
+			});
+
+			it('una caída de red tampoco cuenta como endpoint muerto', async () => {
+				const c = contexto({ webhookId: 'whe_1', secret: 'whsec_x' }, () => {
+					throw new Error('ECONNREFUSED');
+				});
+
+				await expect(hooks().checkExists.call(c.hook as never)).rejects.toThrow();
+				expect(c.staticData.webhookId).toBe('whe_1');
+			});
+
+			it('si apunta a otra URL lo olvida SIN borrarlo: puede ser de otro workflow', async () => {
+				const c = contexto({ webhookId: 'whe_1', secret: 'whsec_x' }, () => ({
+					data: { id: 'whe_1', url: 'https://otro-n8n.example.com/webhook/zzz', status: 'enabled' },
+				}));
+
+				await expect(hooks().checkExists.call(c.hook as never)).resolves.toBe(false);
+				expect(c.staticData).toEqual({});
+				expect(c.peticiones.map((p) => p.method)).toEqual(['GET']);
+			});
+
+			it('si el circuit breaker lo apagó, lo reactiva y conserva id y secreto', async () => {
+				const c = contexto({ webhookId: 'whe_1', secret: 'whsec_x' }, (o) =>
+					o.method === 'PATCH' ? {} : { data: { id: 'whe_1', url: URL_N8N, status: 'disabled' } },
+				);
+
+				await expect(hooks().checkExists.call(c.hook as never)).resolves.toBe(true);
+				expect(c.peticiones[1]).toMatchObject({
+					method: 'PATCH',
+					url: `${BASE}/v3/webhooks/whe_1`,
+					body: { disabled: false },
+				});
+				expect(c.staticData).toEqual({ webhookId: 'whe_1', secret: 'whsec_x' });
+			});
+
+			it('sin nada guardado ni pregunta', async () => {
+				const c = contexto({}, () => ({}));
+				await expect(hooks().checkExists.call(c.hook as never)).resolves.toBe(false);
+				expect(c.peticiones).toHaveLength(0);
+			});
+		});
+
+		describe('create', () => {
+			const crear = (scopes: string[]) =>
+				contexto(
+					{},
+					(o) =>
+						o.url.endsWith('/v3/users/me')
+							? { scopes }
+							: { id: 'whe_nuevo', secret: 'whsec_nuevo' },
+					{ events: ['document.completed'], endpointDescription: '' },
+				);
+
+			it('con una llave sin webhook:delete falla al ACTIVAR, que es cuando el usuario sí lo ve', async () => {
+				const c = crear(['document:*', 'webhook:read', 'webhook:write']);
+
+				await expect(hooks().create.call(c.hook as never)).rejects.toThrow(/webhook:delete/);
+				expect(c.peticiones.map((p) => p.url)).toEqual([`${BASE}/v3/users/me`]);
+			});
+
+			it('el mensaje nombra TODOS los permisos que faltan', async () => {
+				const c = crear(['document:*']);
+				await expect(hooks().create.call(c.hook as never)).rejects.toThrow(
+					/webhook:read, webhook:write, webhook:delete/,
+				);
+			});
+
+			it.each([
+				['los tres explícitos', TODOS_LOS_SCOPES],
+				['el comodín webhook:*', ['document:*', 'webhook:*']],
+				['el comodín de todo', ['*']],
+			])('con %s crea y guarda el secreto', async (_caso, scopes) => {
+				const c = crear(scopes);
+
+				await expect(hooks().create.call(c.hook as never)).resolves.toBe(true);
+				expect(c.staticData).toEqual({
+					webhookId: 'whe_nuevo',
+					secret: 'whsec_nuevo',
+					seenEventIds: [],
+				});
+			});
+		});
+
+		describe('delete', () => {
+			it('con 204 olvida todo', async () => {
+				const c = contexto({ webhookId: 'whe_1', secret: 'whsec_x', seenEventIds: ['evt_1'] }, () => ({}));
+
+				await expect(hooks().delete.call(c.hook as never)).resolves.toBe(true);
+				expect(c.peticiones[0]).toMatchObject({ method: 'DELETE', url: `${BASE}/v3/webhooks/whe_1` });
+				expect(c.staticData).toEqual({});
+			});
+
+			it('con 404 tampoco truena: ya no existe', async () => {
+				const c = contexto({ webhookId: 'whe_1', secret: 'whsec_x' }, () => {
+					throw errorHttp(404);
+				});
+
+				await expect(hooks().delete.call(c.hook as never)).resolves.toBe(true);
+				expect(c.staticData).toEqual({});
+			});
+
+			it('con 403 lanza y CONSERVA el id, para no dejar el endpoint huérfano', async () => {
+				const c = contexto({ webhookId: 'whe_1', secret: 'whsec_x' }, () => {
+					throw errorHttp(403);
+				});
+
+				await expect(hooks().delete.call(c.hook as never)).rejects.toThrow();
+				expect(c.staticData).toEqual({ webhookId: 'whe_1', secret: 'whsec_x' });
+			});
+
+			it('una caída de red también conserva el id', async () => {
+				const c = contexto({ webhookId: 'whe_1', secret: 'whsec_x' }, () => {
+					throw new Error('ETIMEDOUT');
+				});
+
+				await expect(hooks().delete.call(c.hook as never)).rejects.toThrow();
+				expect(c.staticData.webhookId).toBe('whe_1');
+			});
 		});
 	});
 });

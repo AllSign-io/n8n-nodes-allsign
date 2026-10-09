@@ -8,8 +8,9 @@ import type {
 	INodeTypeDescription,
 	IWebhookFunctions,
 	IWebhookResponseData,
+	JsonObject,
 } from 'n8n-workflow';
-import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
+import { NodeConnectionTypes, NodeApiError, NodeOperationError } from 'n8n-workflow';
 
 /**
  * Ventana de replay, en segundos, contra `webhook-timestamp`.
@@ -117,6 +118,52 @@ interface WebhookStaticData {
 /** Cuántos ids se recuerdan para deduplicar. */
 const SEEN_EVENT_IDS_KEPT = 200;
 
+/** Los tres permisos sin los cuales el disparador no puede vivir su ciclo completo. */
+const REQUIRED_SCOPES = ['webhook:read', 'webhook:write', 'webhook:delete'];
+
+/**
+ * El código HTTP de un error de `httpRequestWithAuthentication`.
+ *
+ * Llega como TEXTO en `httpCode` ('404', no 404), así que compararlo contra un
+ * número no empata nunca y un 404 se trataría como error de red.
+ */
+function httpStatusOf(error: unknown): number | undefined {
+	const code = (error as { httpCode?: unknown })?.httpCode;
+	const parsed = Number(code);
+	return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/**
+ * Falla la activación si a la llave le faltan permisos de webhook.
+ *
+ * Se consulta ANTES de crear nada: desactivar es el único momento en que n8n se
+ * traga el error y solo lo escribe en su log, así que una llave sin
+ * `webhook:delete` dejaría endpoints huérfanos sin que nadie se entere. Al
+ * activar, en cambio, n8n sí le enseña el error al usuario.
+ */
+async function assertWebhookScopes(context: IHookFunctions, baseUrl: string): Promise<void> {
+	const me = (await context.helpers.httpRequestWithAuthentication.call(context, 'allSignApi', {
+		method: 'GET',
+		url: `${baseUrl}/v3/users/me`,
+		json: true,
+	})) as { scopes?: string[]; data?: { scopes?: string[] } };
+
+	const scopes = me.scopes ?? me.data?.scopes ?? [];
+	const covers = (needed: string) =>
+		scopes.includes(needed) || scopes.includes('*') || scopes.includes('webhook:*');
+	const missing = REQUIRED_SCOPES.filter((scope) => !covers(scope));
+	if (!missing.length) return;
+
+	throw new NodeOperationError(
+		context.getNode(),
+		`This AllSign API key is missing ${missing.join(', ')}`,
+		{
+			description:
+				'The trigger registers its endpoint when you activate the workflow and removes it when you deactivate, so it needs all three webhook scopes. Add them in AllSign → Developers → API keys, then activate again.',
+		},
+	);
+}
+
 // `usableAsTool` se OMITE a propósito, no se olvidó. Un trigger arranca el
 // workflow cuando llega un evento; un agente no lo puede invocar como
 // herramienta. Y el tipo de n8n solo admite `true` —`false` ni siquiera
@@ -216,10 +263,11 @@ export class AllsignTrigger implements INodeType {
 			/**
 			 * ¿Sigue vivo el endpoint que registramos?
 			 *
-			 * n8n llama esto antes de `create`. Se compara contra la LISTA de la API
-			 * y no solo contra lo que tenemos guardado: si alguien borró el endpoint
-			 * desde el dashboard, lo que tenemos guardado miente y hay que volver a
-			 * crearlo.
+			 * n8n llama esto antes de `create`. Se pregunta POR EL ID y no se busca en
+			 * la lista: la lista devuelve solo los 20 más nuevos, así que en una cuenta
+			 * con varios endpoints el nuestro no aparece, el nodo lo da por muerto y
+			 * crea otro apuntando a la misma URL. El viejo firma con un secreto que n8n
+			 * ya borró, así que cada evento le da 401 y se pierde.
 			 */
 			async checkExists(this: IHookFunctions): Promise<boolean> {
 				const staticData = this.getWorkflowStaticData('node') as WebhookStaticData;
@@ -227,19 +275,43 @@ export class AllsignTrigger implements INodeType {
 
 				const baseUrl = await resolveBaseUrl(this);
 				const webhookUrl = this.getNodeWebhookUrl('default');
+				const endpointUrl = `${baseUrl}/v3/webhooks/${encodeURIComponent(staticData.webhookId)}`;
 
-				const response = (await this.helpers.httpRequestWithAuthentication.call(
-					this,
-					'allSignApi',
-					{ method: 'GET', url: `${baseUrl}/v3/webhooks`, json: true },
-				)) as { data?: Array<IDataObject> };
-
-				const live = (response.data ?? []).find((endpoint) => endpoint.id === staticData.webhookId);
-				if (!live || live.url !== webhookUrl) {
-					// Quedó huérfano o apunta a otra URL: que `create` lo rehaga.
+				const olvidar = () => {
 					delete staticData.webhookId;
 					delete staticData.secret;
+					delete staticData.seenEventIds;
 					return false;
+				};
+
+				let live: IDataObject;
+				try {
+					const response = (await this.helpers.httpRequestWithAuthentication.call(
+						this,
+						'allSignApi',
+						{ method: 'GET', url: endpointUrl, json: true },
+					)) as IDataObject & { data?: IDataObject };
+					live = (response.data ?? response) as IDataObject;
+				} catch (error) {
+					if (httpStatusOf(error) === 404) return olvidar();
+					// Un 500 o una caída de red NO significan que el endpoint murió.
+					// Si se tratan como tal, la activación crea un duplicado cada vez.
+					throw new NodeApiError(this.getNode(), error as JsonObject);
+				}
+
+				// Otra URL: puede ser de otro workflow que trae esta misma static data,
+				// por ejemplo uno importado. Borrarlo dejaría al original sin recibir.
+				if (live.url !== webhookUrl) return olvidar();
+
+				if (live.status === 'disabled') {
+					// Lo apagó el circuit breaker. Reactivarlo conserva id y secreto;
+					// recrearlo los perdería y dejaría el viejo colgado.
+					await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
+						method: 'PATCH',
+						url: endpointUrl,
+						body: { disabled: false },
+						json: true,
+					});
 				}
 				return true;
 			},
@@ -265,12 +337,14 @@ export class AllsignTrigger implements INodeType {
 						`AllSign only accepts https:// webhook URLs, and this n8n instance is serving ${webhookUrl}`,
 						{
 							description:
-								'Start n8n with a public HTTPS address (for local testing: `n8n start --tunnel`), then activate the workflow again.',
+								'Start n8n behind a public HTTPS address and set `WEBHOOK_URL` to it (for local testing, a tunnel such as cloudflared or ngrok works), then activate the workflow again.',
 						},
 					);
 				}
 
 				const baseUrl = await resolveBaseUrl(this);
+				await assertWebhookScopes(this, baseUrl);
+
 				const body: IDataObject = { url: webhookUrl, events };
 				if (endpointDescription) body.description = endpointDescription;
 
@@ -291,7 +365,15 @@ export class AllsignTrigger implements INodeType {
 				return true;
 			},
 
-			/** Da de baja el endpoint al desactivar el workflow. */
+			/**
+			 * Da de baja el endpoint al desactivar el workflow.
+			 *
+			 * Con cualquier error que no sea 404 se relanza SIN olvidar el id. n8n lo
+			 * atrapa y solo lo escribe en su log, pero como corta antes de guardar la
+			 * static data, el id sobrevive y se reusa al reactivar. Tragarse el error y
+			 * olvidar el id —lo que hacía antes— dejaba el endpoint vivo en AllSign para
+			 * siempre, sin que nadie se enterara.
+			 */
 			async delete(this: IHookFunctions): Promise<boolean> {
 				const staticData = this.getWorkflowStaticData('node') as WebhookStaticData;
 				if (!staticData.webhookId) return true;
@@ -303,15 +385,16 @@ export class AllsignTrigger implements INodeType {
 						url: `${baseUrl}/v3/webhooks/${encodeURIComponent(staticData.webhookId)}`,
 						json: true,
 					});
-				} catch {
-					// Ya no existe (borrado desde el dashboard, o tenant distinto):
-					// desactivar el workflow no debe fallar por eso.
-					return true;
-				} finally {
-					delete staticData.webhookId;
-					delete staticData.secret;
-					delete staticData.seenEventIds;
+				} catch (error) {
+					// 404: ya no existe, borrado desde el dashboard o de otro tenant.
+					if (httpStatusOf(error) !== 404) {
+						throw new NodeApiError(this.getNode(), error as JsonObject);
+					}
 				}
+
+				delete staticData.webhookId;
+				delete staticData.secret;
+				delete staticData.seenEventIds;
 				return true;
 			},
 		},

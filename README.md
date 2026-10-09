@@ -138,7 +138,7 @@ Starts a workflow when something happens in AllSign — a document is sent, comp
 | Field | Description |
 |:---|:---|
 | **Events** | Which events start the workflow. The list is loaded live from your account (`GET /v3/webhooks/events`), so it never goes out of date |
-| **Endpoint Description** (optional) | A label shown next to the URL in the AllSign dashboard, to tell several n8n workflows apart |
+| **Description** (optional) | A label shown next to the URL in the AllSign dashboard, to tell several n8n workflows apart |
 
 How it works:
 
@@ -146,6 +146,10 @@ How it works:
 - Every delivery is **signature-verified** ([Standard Webhooks](https://www.standardwebhooks.com/)) with the secret AllSign hands over at registration. A delivery with a bad or missing signature is answered `401` and never reaches your workflow; AllSign records it under the endpoint's deliveries.
 - A delivery AllSign retries (same event id) is acknowledged but the workflow does not run twice.
 - If n8n restarts, the existing endpoint is reused — no duplicates. If someone deletes it from the dashboard, the node registers a fresh one on next activation.
+
+> Reference: [Webhooks](https://allsign.io/developers/docs/webhooks) and the [receive-and-verify recipe](https://allsign.io/developers/docs/recetas/recibe-y-verifica-webhooks).
+
+> **If n8n changes address**, the endpoint registered under the old URL stays in your AllSign account. The node leaves it alone on purpose: it cannot tell that case apart from a workflow you imported, whose endpoint belongs to the original. It stops receiving once AllSign's circuit breaker disables it; delete it from the dashboard when you see it.
 
 > **Your API key needs three scopes** for the Trigger: `webhook:read`, `webhook:write` **and `webhook:delete`**. Without `webhook:delete` the node can register the endpoint but not remove it when you deactivate the workflow, and orphan endpoints pile up in your account. Edit the key's scopes in the AllSign dashboard under **Developers → API keys**.
 

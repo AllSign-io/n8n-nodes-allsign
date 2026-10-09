@@ -2,16 +2,18 @@
 
 All notable changes to `n8n-nodes-allsign` will be documented in this file.
 
-## [0.7.0] — 2026-10-06
+## [0.7.0] — 2026-10-09
 
 ### ✨ Added
 
 - **AllSign Trigger** — a trigger node, so a workflow can *start* from AllSign instead of only acting on it. Until now the node could create and send documents, but nothing in n8n knew when one got signed: you had to poll, or wire a bare Webhook node and verify the signature by hand. The Trigger registers its own endpoint through `POST /v3/webhooks` when the workflow is activated and removes it on deactivation, so there is nothing to set up in the AllSign dashboard. The event list is loaded live from `GET /v3/webhooks/events`, which means a new AllSign event shows up in the dropdown without shipping a release.
-- **Standard Webhooks signature verification** — every delivery is checked against `{webhook-id}.{webhook-timestamp}.{raw body}` with an HMAC, in constant time, and replays older than five minutes are rejected. Implemented in-tree rather than through a dependency: it is fifteen lines, and a community node with extra packages is a bigger ask of n8n's review. The API key needs `webhook:read`, `webhook:write` and `webhook:delete`.
+- **Standard Webhooks signature verification** — every delivery is checked against `{webhook-id}.{webhook-timestamp}.{raw body}` with an HMAC, in constant time, and replays older than five minutes are rejected. Implemented in-tree rather than through a dependency: it is fifteen lines, and a community node with extra packages is a bigger ask of n8n's review.
+- **The endpoint survives the things that go wrong around it.** It is looked up by id rather than searched for in a list, which only returns the twenty most recent — in a busier account the node would have missed its own endpoint and registered a second one against the same URL, and the first would have kept signing with a secret n8n no longer had. A 500 or a dropped connection counts as "unknown", not "gone". An endpoint the circuit breaker disabled is reactivated, keeping its id and secret. One that points somewhere else is left alone, because it may belong to a workflow someone imported.
+- **Deactivating never leaves an endpoint behind without saying so.** Only a 404 is ignored when removing; any other failure is raised, which keeps the id so the next activation reuses it instead of orphaning the old endpoint.
 
 ### 🔐 Credentials
 
-- The AllSign API key used by the Trigger needs three webhook scopes on top of `document:*`. A key without them fails at activation with a clear message instead of silently never firing.
+- The AllSign API key used by the Trigger needs `webhook:read`, `webhook:write` and `webhook:delete` on top of `document:*`. The scopes are checked when you activate the workflow — the one moment n8n shows the error on screen — and the message names the ones that are missing.
 
 ## [0.6.0] — 2026-08-26
 
