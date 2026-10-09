@@ -7,6 +7,7 @@ import { Allsign } from './Allsign.node';
 import { AllSignApi } from '../../credentials/AllSignApi.credentials';
 import exampleWorkflow from '../../examples/NDA_Automation_AllSign_Workflow.json';
 import pkg from '../../package.json';
+import codex from './Allsign.node.json';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type NodeProp = Record<string, any>;
@@ -1875,14 +1876,35 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 		// prohíbe `node:fs` en todo el repo (n8n Cloud rechaza los nodos con
 		// dependencias). Por eso quedan fuera README.md y docs/, que no se pueden
 		// importar — ahí la protección sigue siendo humana.
-		it('la descripción de la credencial no manda al dominio muerto', () => {
-			const apiKey = new AllSignApi().properties.find((p) => p.name === 'apiKey');
-			expect(apiKey?.description).toContain('allsign.io/developers/api-keys');
-			expect(apiKey?.description).not.toMatch(/dashboard\.allsign\.io/);
+		const HOSTS_PERMITIDOS = ['allsign.io', 'api.allsign.io'];
+
+		const hostsDeAllSign = (fuente: unknown): string[] =>
+			[...JSON.stringify(fuente).matchAll(/https?:\/\/([a-z0-9.-]*allsign\.io)/gi)].map(
+				(m) => m[1].toLowerCase(),
+			);
+
+		const dondeVivenLasUrls = (): Record<string, unknown> => ({
+			'la credencial': new AllSignApi(),
+			'el codex del nodo': codex,
+			'el workflow de ejemplo': exampleWorkflow,
 		});
 
-		it('el sticky del workflow de ejemplo tampoco', () => {
-			expect(JSON.stringify(exampleWorkflow)).not.toMatch(/dashboard\.allsign\.io/);
+		it.each(Object.keys(dondeVivenLasUrls()))('%s solo apunta a hosts vivos', (cual) => {
+			const hosts = hostsDeAllSign(dondeVivenLasUrls()[cual]);
+			expect(hosts.filter((h) => !HOSTS_PERMITIDOS.includes(h))).toEqual([]);
+		});
+
+		it('reprueba los hosts que ya se retiraron', () => {
+			// Si este test pasa con alguno de estos, la red de seguridad no sirve.
+			for (const muerto of ['dashboard.allsign.io', 'docs.allsign.io', 'developers.allsign.io', 'app.allsign.io']) {
+				const hosts = hostsDeAllSign({ url: `https://${muerto}/lo-que-sea` });
+				expect(hosts.filter((h) => !HOSTS_PERMITIDOS.includes(h))).toEqual([muerto]);
+			}
+		});
+
+		it('la descripción de la credencial sigue mandando a sacar la llave', () => {
+			const apiKey = new AllSignApi().properties.find((p) => p.name === 'apiKey');
+			expect(apiKey?.description).toContain('allsign.io/developers/api-keys');
 		});
 
 		it('declara la versión de Node que necesita', () => {

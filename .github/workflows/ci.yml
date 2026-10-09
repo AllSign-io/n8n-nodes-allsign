@@ -21,6 +21,11 @@ jobs:
       - name: Install dependencies
         run: 'npm ci'
 
+      - name: No retired AllSign domains
+        run: |
+          ! grep -rnE 'dashboard\.allsign\.io|docs\.allsign\.io|developers\.allsign\.io' . \
+            --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist --exclude='*.test.ts'
+
       - name: Run tests
         run: 'npm test'
 
