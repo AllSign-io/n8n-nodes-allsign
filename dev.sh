@@ -7,38 +7,44 @@
 
 set -e
 
-PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-N8N_CUSTOM="$HOME/.n8n/custom"
-LINK="$N8N_CUSTOM/node_modules/n8n-nodes-allsign"
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+cd "$PROJECT_DIR"
+
+resolved() { (CDPATH= cd "$1" 2>/dev/null && pwd -P); }
+
+es_este_repo() { [ "$(resolved "$1")" = "$PROJECT_DIR" ]; }
+
+quitar_si_no_es_el_repo() {
+    { [ -e "$1" ] || [ -L "$1" ]; } || return 0
+    es_este_repo "$1" && return 0
+    rm -rf "$1"
+}
 
 echo ""
 echo "🔧 AllSign n8n Node — Dev Mode (hot reload)"
 echo "============================================="
 
 # --- Clean stale installs (only these locations) ---
-rm -f  "$HOME/.n8n/node_modules/n8n-nodes-allsign" 2>/dev/null
-rm -rf "$HOME/.npm-global/lib/node_modules/n8n-nodes-allsign" 2>/dev/null
-rm -rf "$HOME/.npm-global/lib/node_modules/n8n/node_modules/n8n-nodes-allsign" 2>/dev/null
-rm -rf "$HOME/.n8n/custom/node_modules/n8n-nodes-allsign" 2>/dev/null
+quitar_si_no_es_el_repo "$HOME/.n8n/node_modules/n8n-nodes-allsign"
+quitar_si_no_es_el_repo "$HOME/.npm-global/lib/node_modules/n8n-nodes-allsign"
+quitar_si_no_es_el_repo "$HOME/.npm-global/lib/node_modules/n8n/node_modules/n8n-nodes-allsign"
+quitar_si_no_es_el_repo "$HOME/.n8n/custom/node_modules/n8n-nodes-allsign"
 
 # --- Ensure symlink in ~/.n8n/nodes/ (where n8n 2.x loads community nodes) ---
 N8N_NODES="$HOME/.n8n/nodes"
 LINK="$N8N_NODES/node_modules/n8n-nodes-allsign"
 mkdir -p "$N8N_NODES/node_modules"
-# Si hay algo que NO sea nuestro symlink (p.ej. un directorio real que dejó
-# `npm install n8n-nodes-allsign`), se quita: si no, `ln -sf` mete el enlace
-# ADENTRO del directorio y n8n sigue cargando la versión vieja de npm.
-if [ -e "$LINK" ] || [ -L "$LINK" ]; then
-    if [ "$(readlink "$LINK")" != "$PROJECT_DIR" ]; then
+if ! es_este_repo "$LINK"; then
+    if [ -e "$LINK" ] || [ -L "$LINK" ]; then
         echo "⚠️  $LINK no apunta a este repo — se reemplaza"
-        rm -rf "$LINK"
+        echo "    Si lo dejó npm: cd ~/.n8n/nodes && npm uninstall n8n-nodes-allsign"
+        quitar_si_no_es_el_repo "$LINK"
     fi
-fi
-[ -L "$LINK" ] || ln -s "$PROJECT_DIR" "$LINK"
-# Verificar de verdad, no confiar en que ln no falló.
-if [ "$(readlink "$LINK")" != "$PROJECT_DIR" ]; then
-    echo "✗ No se pudo enlazar el nodo: $LINK -> $(readlink "$LINK" || echo '(nada)')"
-    exit 1
+    ln -s "$PROJECT_DIR" "$LINK"
+    if ! es_este_repo "$LINK"; then
+        echo "✗ No se pudo enlazar el nodo en $LINK"
+        exit 1
+    fi
 fi
 echo "✓ Node linked -> $PROJECT_DIR"
 
