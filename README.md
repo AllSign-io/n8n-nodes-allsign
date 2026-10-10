@@ -136,7 +136,7 @@ Manually resend the signing invitation to one signer who hasn't completed yet. R
 ### 1. Configure Credentials
 
 1. In n8n, go to **Credentials → Add Credential → AllSign API**
-2. Enter your **API Key** — get one from [dashboard.allsign.io/developers/api-keys](https://dashboard.allsign.io/developers/api-keys)
+2. Enter your **API Key** — get one from [allsign.io/developers/api-keys](https://allsign.io/developers/api-keys)
 3. (Optional) Set the **Base URL** if using a custom environment (default: `https://api.allsign.io`)
 4. Click **Save** — the connection test validates your key automatically
 
@@ -225,8 +225,8 @@ n8n-nodes-allsign/
 ## 📚 Resources
 
 - [AllSign Platform](https://allsign.io)
-- [AllSign API Documentation](https://developers.allsign.io)
-- [AllSign API Playground](https://developers.allsign.io/api-playground/create-document)
+- [AllSign API Documentation](https://allsign.io/developers/docs)
+- [AllSign API Playground](https://allsign.io/developers/docs/quickstart)
 - [n8n Documentation](https://docs.n8n.io/)
 - [n8n Community Forum](https://community.n8n.io/)
 

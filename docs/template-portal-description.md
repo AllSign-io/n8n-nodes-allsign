@@ -11,7 +11,7 @@ Automate your NDA workflow end-to-end: a web form collects signer details and co
 ## Prerequisites
 
 - **AllSign account** with API access enabled — [Sign up at allsign.io](https://allsign.io)
-- **AllSign API Key** — Generate one from [dashboard.allsign.io/developers/api-keys](https://dashboard.allsign.io/developers/api-keys)
+- **AllSign API Key** — Generate one from [allsign.io/developers/api-keys](https://allsign.io/developers/api-keys)
 - **An AllSign Template** — Upload `NDA_Template_AllSign.docx` (included in the [GitHub repository](https://github.com/AllSign-io/n8n-nodes-allsign/tree/main/examples)) via the AllSign dashboard's Templates section, and note its Template ID (`tmpl_...`)
 
 ## Setup instructions

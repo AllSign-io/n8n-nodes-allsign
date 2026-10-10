@@ -4,8 +4,10 @@ import type { IExecuteFunctions } from 'n8n-workflow';
 // cambia la regla, estos tests se enteren.
 import { isObjectEmpty } from 'n8n-workflow';
 import { Allsign } from './Allsign.node';
+import { AllSignApi } from '../../credentials/AllSignApi.credentials';
 import exampleWorkflow from '../../examples/NDA_Automation_AllSign_Workflow.json';
 import pkg from '../../package.json';
+import codex from './Allsign.node.json';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type NodeProp = Record<string, any>;
@@ -1864,6 +1866,47 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 	// Lo que pide la verificación de n8n antes de publicar
 	// ─────────────────────────────────────────────────────────────────────────
 	describe('Listo para publicar', () => {
+		// `dashboard.allsign.io` dejó de servir y hoy responde 503. La landing y el
+		// dashboard son la MISMA app Next.js, así que la ruta buena es `allsign.io`
+		// —por eso el login es `/signin` relativo—. El costo no es parejo: la
+		// descripción de la credencial es lo PRIMERO que lee alguien que acaba de
+		// instalar el nodo, y mandarlo a un 503 en su primer minuto es perderlo ahí.
+		//
+		// Se comprueba por importación y no leyendo archivos: el linter de n8n
+		// prohíbe `node:fs` en todo el repo (n8n Cloud rechaza los nodos con
+		// dependencias). Por eso quedan fuera README.md y docs/, que no se pueden
+		// importar — ahí la protección sigue siendo humana.
+		const HOSTS_PERMITIDOS = ['allsign.io', 'api.allsign.io'];
+
+		const hostsDeAllSign = (fuente: unknown): string[] =>
+			[...JSON.stringify(fuente).matchAll(/https?:\/\/([a-z0-9.-]*allsign\.io)/gi)].map(
+				(m) => m[1].toLowerCase(),
+			);
+
+		const dondeVivenLasUrls = (): Record<string, unknown> => ({
+			'la credencial': new AllSignApi(),
+			'el codex del nodo': codex,
+			'el workflow de ejemplo': exampleWorkflow,
+		});
+
+		it.each(Object.keys(dondeVivenLasUrls()))('%s solo apunta a hosts vivos', (cual) => {
+			const hosts = hostsDeAllSign(dondeVivenLasUrls()[cual]);
+			expect(hosts.filter((h) => !HOSTS_PERMITIDOS.includes(h))).toEqual([]);
+		});
+
+		it('reprueba los hosts que ya se retiraron', () => {
+			// Si este test pasa con alguno de estos, la red de seguridad no sirve.
+			for (const muerto of ['dashboard.allsign.io', 'docs.allsign.io', 'developers.allsign.io', 'app.allsign.io']) {
+				const hosts = hostsDeAllSign({ url: `https://${muerto}/lo-que-sea` });
+				expect(hosts.filter((h) => !HOSTS_PERMITIDOS.includes(h))).toEqual([muerto]);
+			}
+		});
+
+		it('la descripción de la credencial sigue mandando a sacar la llave', () => {
+			const apiKey = new AllSignApi().properties.find((p) => p.name === 'apiKey');
+			expect(apiKey?.description).toContain('allsign.io/developers/api-keys');
+		});
+
 		it('declara la versión de Node que necesita', () => {
 			// Las guidelines de verificación lo piden, y sin esto npm no avisa a
 			// nadie que en Node viejo el nodo no corre.
