@@ -225,8 +225,8 @@ n8n-nodes-allsign/
 ## 📚 Resources
 
 - [AllSign Platform](https://allsign.io)
-- [AllSign API Documentation](https://developers.allsign.io)
-- [AllSign API Playground](https://developers.allsign.io/api-playground/create-document)
+- [AllSign API Documentation](https://allsign.io/developers/docs)
+- [AllSign API Playground](https://allsign.io/developers/docs/quickstart)
 - [n8n Documentation](https://docs.n8n.io/)
 - [n8n Community Forum](https://community.n8n.io/)
 
