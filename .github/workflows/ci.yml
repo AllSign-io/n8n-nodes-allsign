@@ -29,3 +29,6 @@ jobs:
 
       - name: Run build
         run: 'npm run build'
+
+      - name: Scan the published tarball
+        run: 'npm run scan'

@@ -41,6 +41,7 @@
 		"build:watch": "tsc --watch",
 		"dev": "n8n-node dev",
 		"lint": "n8n-node lint",
+		"scan": "node scripts/escanear-paquete.mjs",
 		"lint:fix": "n8n-node lint --fix",
 		"test": "jest",
 		"release": "n8n-node release"
