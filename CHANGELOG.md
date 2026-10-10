@@ -2,7 +2,7 @@
 
 All notable changes to `n8n-nodes-allsign` will be documented in this file.
 
-## [Sin publicar]
+## [0.7.0] — 2026-10-09
 
 ### 🐛 Fixed
 
