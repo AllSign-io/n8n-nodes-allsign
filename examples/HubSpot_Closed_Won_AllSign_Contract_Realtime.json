@@ -38,12 +38,59 @@
     },
     {
       "parameters": {
-        "jsCode": "const crypto = require('crypto');\n\n// El secreto de cliente de tu aplicacion privada. NO es el token pat-...; esta\n// en la pestana Auth de la app. Guardalo como variable de entorno de n8n.\nconst secreto = $env.HUBSPOT_CLIENT_SECRET;\nif (!secreto) {\n  return [{ json: { valida: false, porque: 'falta HUBSPOT_CLIENT_SECRET' } }];\n}\n\nconst cabeceras = $input.first().json.headers ?? {};\nconst v3 = cabeceras['x-hubspot-signature-v3'];\nconst marca = cabeceras['x-hubspot-request-timestamp'];\n\n// El cuerpo CRUDO, byte por byte. Si se usa el JSON ya parseado, cualquier\n// diferencia de orden o de espacios rompe la firma aunque el aviso sea legitimo.\nconst crudo = (await this.helpers.getBinaryDataBuffer(0, 'data')).toString('utf8');\n\nconst iguales = (a, b) => {\n  const x = Buffer.from(a ?? '');\n  const y = Buffer.from(b ?? '');\n  return x.length === y.length && crypto.timingSafeEqual(x, y);\n};\n\nlet valida = false;\nif (v3) {\n  // v3: se firma metodo + url + cuerpo + marca de tiempo, y la entrega caduca.\n  if (!marca || Math.abs(Date.now() - Number(marca)) > 5 * 60 * 1000) {\n    return [{ json: { valida: false, porque: 'aviso viejo' } }];\n  }\n  const url = $input.first().json.webhookUrl;\n  const base = 'POST' + url + crudo + marca;\n  valida = iguales(v3, crypto.createHmac('sha256', secreto).update(base).digest('base64'));\n} else {\n  // v1, la que mandan las apps privadas: sha256 del secreto pegado al cuerpo.\n  const esperada = crypto.createHash('sha256').update(secreto + crudo).digest('hex');\n  valida = iguales(cabeceras['x-hubspot-signature'], esperada);\n}\n\nreturn [{ json: { valida, eventos: valida ? JSON.parse(crudo) : [] } }];"
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b1",
+              "name": "secreto",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "b2",
+              "name": "cuerpo",
+              "type": "string",
+              "value": "={{ $json.rawBody?.toString() ?? JSON.stringify($json.body) }}"
+            },
+            {
+              "id": "b3",
+              "name": "firmaV1",
+              "type": "string",
+              "value": "={{ $json.headers['x-hubspot-signature'] ?? '' }}"
+            },
+            {
+              "id": "b4",
+              "name": "firmaV3",
+              "type": "string",
+              "value": "={{ $json.headers['x-hubspot-signature-v3'] ?? '' }}"
+            },
+            {
+              "id": "b5",
+              "name": "marca",
+              "type": "string",
+              "value": "={{ $json.headers['x-hubspot-request-timestamp'] ?? '' }}"
+            },
+            {
+              "id": "b6",
+              "name": "aFirmar",
+              "type": "string",
+              "value": "={{ $json.headers['x-hubspot-signature-v3'] ? 'POST' + $json.webhookUrl + ($json.rawBody?.toString() ?? JSON.stringify($json.body)) + $json.headers['x-hubspot-request-timestamp'] : '' }}"
+            },
+            {
+              "id": "b7",
+              "name": "vigente",
+              "type": "boolean",
+              "value": "={{ !$json.headers['x-hubspot-signature-v3'] || Math.abs(Date.now() - Number($json.headers['x-hubspot-request-timestamp'])) <= 300000 }}"
+            }
+          ]
+        },
+        "options": {}
       },
-      "id": "d4ec81dd-f386-50fa-9c9b-44b6a871414a",
-      "name": "Is it really HubSpot?",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "id": "0397c89a-b8ff-5b9e-9470-cf72c9670eb2",
+      "name": "Signature inputs",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
       "position": [
         -960,
         300
@@ -60,13 +107,101 @@
           },
           "conditions": [
             {
-              "id": "ok",
-              "leftValue": "={{ $json.valida }}",
+              "id": "v3",
+              "leftValue": "={{ $json.firmaV3 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9047e18e-b443-5159-8375-a666bc553be9",
+      "name": "Which signature version?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -720,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.aFirmar }}",
+        "dataPropertyName": "calculada",
+        "secret": "={{ $json.secreto }}",
+        "encoding": "base64"
+      },
+      "id": "dd9ffc5d-dbeb-5b0f-9c7c-b0b1e96cb6bb",
+      "name": "Sign it the v3 way",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        -480,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "action": "hash",
+        "type": "SHA256",
+        "value": "={{ $json.secreto + $json.cuerpo }}",
+        "dataPropertyName": "calculada",
+        "encoding": "hex"
+      },
+      "id": "0aeb7b89-f32d-5eb2-8218-4f79cda7271a",
+      "name": "Sign it the v1 way",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        -480,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "hay",
+              "leftValue": "={{ $json.secreto }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "fresca",
+              "leftValue": "={{ $json.vigente }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",
                 "operation": "true",
                 "singleValue": true
+              }
+            },
+            {
+              "id": "cuadra",
+              "leftValue": "={{ $json.calculada }}",
+              "rightValue": "={{ $json.firmaV3 || $json.firmaV1 }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
               }
             }
           ],
@@ -79,7 +214,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -720,
+        -240,
         300
       ]
     },
@@ -95,8 +230,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        -480,
-        140
+        720,
+        600
       ]
     },
     {
@@ -112,13 +247,13 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        -480,
-        500
+        480,
+        600
       ]
     },
     {
       "parameters": {
-        "fieldToSplitOut": "eventos",
+        "fieldToSplitOut": "body",
         "options": {}
       },
       "id": "084298cf-f8fe-5dbf-a8c0-a03dad2380e3",
@@ -126,7 +261,7 @@
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1,
       "position": [
-        -240,
+        0,
         300
       ]
     },
@@ -159,7 +294,7 @@
       "type": "n8n-nodes-base.filter",
       "typeVersion": 2.2,
       "position": [
-        0,
+        240,
         300
       ]
     },
@@ -176,7 +311,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        240,
+        480,
         300
       ],
       "credentials": {
@@ -235,7 +370,7 @@
       "type": "n8n-nodes-base.filter",
       "typeVersion": 2.2,
       "position": [
-        480,
+        720,
         300
       ]
     },
@@ -252,7 +387,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        720,
+        960,
         300
       ],
       "credentials": {
@@ -291,7 +426,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        960,
+        1200,
         300
       ]
     },
@@ -308,7 +443,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1200,
+        1440,
         300
       ],
       "credentials": {
@@ -422,7 +557,7 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        1440,
+        1680,
         300
       ]
     },
@@ -487,7 +622,7 @@
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.2,
       "position": [
-        1680,
+        1920,
         300
       ]
     },
@@ -529,7 +664,7 @@
       "type": "n8n-nodes-allsign.allsign",
       "typeVersion": 1,
       "position": [
-        2160,
+        2400,
         300
       ],
       "credentials": {
@@ -570,7 +705,7 @@
       "type": "n8n-nodes-base.hubspot",
       "typeVersion": 2.2,
       "position": [
-        2400,
+        2640,
         300
       ],
       "credentials": {
@@ -593,7 +728,7 @@
       "type": "n8n-nodes-allsign.allsign",
       "typeVersion": 1,
       "position": [
-        2640,
+        2880,
         300
       ],
       "credentials": {
@@ -630,7 +765,7 @@
       "type": "n8n-nodes-base.hubspot",
       "typeVersion": 2.2,
       "position": [
-        2880,
+        3120,
         300
       ],
       "credentials": {
@@ -656,7 +791,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3120,
+        3360,
         300
       ],
       "credentials": {
@@ -692,7 +827,7 @@
       "type": "n8n-nodes-base.hubspot",
       "typeVersion": 2.2,
       "position": [
-        2400,
+        2640,
         560
       ],
       "credentials": {
@@ -709,8 +844,8 @@
         "height": 360,
         "color": 4
       },
-      "id": "ee8eea31-f8e1-511c-ac08-265780635962",
-      "name": "Note 21",
+      "id": "6d9d1b3f-db41-5c94-b14b-5bef07edd4c8",
+      "name": "Note 24",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -1087,8 +1222,8 @@
         "height": 260,
         "color": 3
       },
-      "id": "ccbf8757-a564-520f-8378-4c77a3ee4063",
-      "name": "Note 35",
+      "id": "6a8203a5-3277-5c24-9156-acb1a926ed80",
+      "name": "Note 38",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -1138,8 +1273,8 @@
         "height": 320,
         "color": 4
       },
-      "id": "6a8203a5-3277-5c24-9156-acb1a926ed80",
-      "name": "Note 38",
+      "id": "aed2ca88-5233-5d04-8fb6-4cb74a9c096c",
+      "name": "Note 41",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -1341,13 +1476,13 @@
     },
     {
       "parameters": {
-        "content": "# Instalación (5 minutos)\n\n1. **AllSign** → Desarrolladores → API keys. Crea una llave con los permisos de documentos más `webhook:read`, `webhook:write` y `webhook:delete`. Guárdala en la credencial *AllSign API*.\n2. **HubSpot** → Configuración → Integraciones → Aplicaciones privadas. Crea una con `crm.objects.contacts` (lectura y escritura), `crm.objects.deals` (lectura y escritura), `crm.schemas.deals.read` y `files`. Guarda el token en la credencial *HubSpot App Token*.\n3. En HubSpot agrega dos **propiedades de negocio**: `allsign_document_id` (texto de una línea) y `allsign_contract_status` (desplegable con `created`, `sent`, `signed` y `error`). Un negocio marcado `error` no se reintenta solo: para reintentarlo, borra esas dos propiedades a mano.\n4. Sube tu contrato como **plantilla** en AllSign y pega su id `tmpl_…` en *Prepare contract data*. En ese mismo nodo, más abajo, están las que salen de ti y no del CRM: **empresa_emisora**, **emisor_nombre**, **emisor_correo**, **vigencia**, **jurisdiccion** y **objeto**. Las tres primeras van vacías a propósito: si no las llenas, AllSign rechaza el contrato con un 422 y te enteras, en vez de mandarle a tu cliente un acuerdo con un texto de ejemplo. El correo del emisor tiene que ser distinto al del cliente: la API no acepta dos firmantes con el mismo.\n5. En AllSign, dile a la plantilla dónde van las firmas. Una sola vez, con `PUT /v3/templates/{tuPlantilla}/signing` y este cuerpo:\n```json\n{\"roles\": [\n  {\"name\": \"emisor\",  \"fields\": [{\"roleName\": \"emisor\",  \"kind\": \"signature\", \"page\": 3,\n     \"rect\": {\"x\": 8,  \"y\": 30, \"width\": 35, \"height\": 7},\n     \"anchor\": \"Firma por la empresa\", \"expect\": 1, \"onMiss\": \"fail\"}]},\n  {\"name\": \"cliente\", \"fields\": [{\"roleName\": \"cliente\", \"kind\": \"signature\", \"page\": 3,\n     \"rect\": {\"x\": 55, \"y\": 30, \"width\": 35, \"height\": 7},\n     \"anchor\": \"Firma por el cliente\", \"expect\": 1, \"onMiss\": \"fail\"}]}\n]}\n```\nSin esto, AllSign pone las firmas al pie de la **primera** página, encima de las cláusulas. Los textos del `anchor` son los que trae el acuerdo de este repo; si usas otro documento, pon los tuyos y que aparezcan una sola vez.\nEn este repo, `examples/NDA_Plantilla_AllSign_ES.docx` es un acuerdo de confidencialidad en español con esas mismas variables.\n6. Los dos nodos de correo traen direcciones de ejemplo (`sales@example.com`) que rebotan. Conecta tu servidor de correo y pon tu remitente y tu destinatario, o bórralos.\n7. Publica el flujo. Mueve un negocio a **Contrato enviado** y velo salir.\n\n8. Abre el nodo *HubSpot calls when a deal changes* y **cambia la ruta** por algo tuyo. Viene con un texto de relleno a propósito: si la dejas, cualquiera que lea este repo puede adivinar tu dirección.\n9. En la aplicación privada, pestaña **Auth**, copia el **secreto de cliente**. No es el token `pat-…`. Guárdalo en n8n como variable de entorno `HUBSPOT_CLIENT_SECRET`. Sin él, el flujo rechaza todos los avisos.\n10. En esa misma aplicación abre la pestaña **Webhooks**, pega como URL de destino la dirección de producción de ese nodo y suscríbete a **Negocio → Propiedad modificada → Deal Stage**. No hace falta cuenta de desarrollador ni aplicación pública. El flujo tiene que estar publicado antes, si no la dirección todavía no contesta.\n\n**Por qué tanto cuidado:** esa dirección es pública y quien la conozca puede llamarla. Con ella y el número de un negocio, alguien de fuera podría mandar contratos de verdad, y cobrados. Por eso el flujo verifica la firma de HubSpot antes de mirar el contenido, y vuelve a leer el negocio en HubSpot en lugar de creerle al aviso.\n\n**¿Otro embudo?** Las etapas `contractsent` y `closedwon` son las del embudo que HubSpot trae de fábrica. Si usas uno propio, cambia la etapa en dos nodos: la que busca los negocios al principio, y *Move the deal to Closed Won* al final. El identificador de tu etapa sale de HubSpot, en la configuración del embudo.\n\n**¿Correo o WhatsApp?** Lo eliges tú: abre *Prepare contract data*, campo `channel`, y en la primera línea cambia `prefiere` de `email` a `whatsapp`. Para WhatsApp el teléfono tiene que poder completarse con la lada del país que traiga el contacto en HubSpot; si no se puede, ese contrato se va por correo en lugar de fallar.",
+        "content": "# Instalación (5 minutos)\n\n1. **AllSign** → Desarrolladores → API keys. Crea una llave con los permisos de documentos más `webhook:read`, `webhook:write` y `webhook:delete`. Guárdala en la credencial *AllSign API*.\n2. **HubSpot** → Configuración → Integraciones → Aplicaciones privadas. Crea una con `crm.objects.contacts` (lectura y escritura), `crm.objects.deals` (lectura y escritura), `crm.schemas.deals.read` y `files`. Guarda el token en la credencial *HubSpot App Token*.\n3. En HubSpot agrega dos **propiedades de negocio**: `allsign_document_id` (texto de una línea) y `allsign_contract_status` (desplegable con `created`, `sent`, `signed` y `error`). Un negocio marcado `error` no se reintenta solo: para reintentarlo, borra esas dos propiedades a mano.\n4. Sube tu contrato como **plantilla** en AllSign y pega su id `tmpl_…` en *Prepare contract data*. En ese mismo nodo, más abajo, están las que salen de ti y no del CRM: **empresa_emisora**, **emisor_nombre**, **emisor_correo**, **vigencia**, **jurisdiccion** y **objeto**. Las tres primeras van vacías a propósito: si no las llenas, AllSign rechaza el contrato con un 422 y te enteras, en vez de mandarle a tu cliente un acuerdo con un texto de ejemplo. El correo del emisor tiene que ser distinto al del cliente: la API no acepta dos firmantes con el mismo.\n5. En AllSign, dile a la plantilla dónde van las firmas. Una sola vez, con `PUT /v3/templates/{tuPlantilla}/signing` y este cuerpo:\n```json\n{\"roles\": [\n  {\"name\": \"emisor\",  \"fields\": [{\"roleName\": \"emisor\",  \"kind\": \"signature\", \"page\": 3,\n     \"rect\": {\"x\": 8,  \"y\": 30, \"width\": 35, \"height\": 7},\n     \"anchor\": \"Firma por la empresa\", \"expect\": 1, \"onMiss\": \"fail\"}]},\n  {\"name\": \"cliente\", \"fields\": [{\"roleName\": \"cliente\", \"kind\": \"signature\", \"page\": 3,\n     \"rect\": {\"x\": 55, \"y\": 30, \"width\": 35, \"height\": 7},\n     \"anchor\": \"Firma por el cliente\", \"expect\": 1, \"onMiss\": \"fail\"}]}\n]}\n```\nSin esto, AllSign pone las firmas al pie de la **primera** página, encima de las cláusulas. Los textos del `anchor` son los que trae el acuerdo de este repo; si usas otro documento, pon los tuyos y que aparezcan una sola vez.\nEn este repo, `examples/NDA_Plantilla_AllSign_ES.docx` es un acuerdo de confidencialidad en español con esas mismas variables.\n6. Los dos nodos de correo traen direcciones de ejemplo (`sales@example.com`) que rebotan. Conecta tu servidor de correo y pon tu remitente y tu destinatario, o bórralos.\n7. Publica el flujo. Mueve un negocio a **Contrato enviado** y velo salir.\n\n8. Abre el nodo *HubSpot calls when a deal changes* y **cambia la ruta** por algo tuyo. Viene con un texto de relleno a propósito: si la dejas, cualquiera que lea este repo puede adivinar tu dirección.\n9. En la aplicación privada, pestaña **Auth**, copia el **secreto de cliente**. No es el token `pat-…`. Pégalo en la primera línea del nodo *Is it really HubSpot?*, donde dice `let secreto = ''`. Sin él, el flujo rechaza todos los avisos.\n   Si prefieres no dejarlo escrito en el flujo, ponlo en la variable de entorno `HUBSPOT_CLIENT_SECRET` y arranca n8n con `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`. Por defecto n8n no deja que un nodo Code lea el entorno, así que sin esa bandera no funciona.\n10. En esa misma aplicación abre la pestaña **Webhooks**, pega como URL de destino la dirección de producción de ese nodo y suscríbete a **Negocio → Propiedad modificada → Deal Stage**. No hace falta cuenta de desarrollador ni aplicación pública. El flujo tiene que estar publicado antes, si no la dirección todavía no contesta.\n\n**Por qué tanto cuidado:** esa dirección es pública y quien la conozca puede llamarla. Con ella y el número de un negocio, alguien de fuera podría mandar contratos de verdad, y cobrados. Por eso el flujo verifica la firma de HubSpot antes de mirar el contenido, y vuelve a leer el negocio en HubSpot en lugar de creerle al aviso.\n\n**¿Otro embudo?** Las etapas `contractsent` y `closedwon` son las del embudo que HubSpot trae de fábrica. Si usas uno propio, cambia la etapa en dos nodos: la que busca los negocios al principio, y *Move the deal to Closed Won* al final. El identificador de tu etapa sale de HubSpot, en la configuración del embudo.\n\n**¿Correo o WhatsApp?** Lo eliges tú: abre *Prepare contract data*, campo `channel`, y en la primera línea cambia `prefiere` de `email` a `whatsapp`. Para WhatsApp el teléfono tiene que poder completarse con la lada del país que traiga el contacto en HubSpot; si no se puede, ese contrato se va por correo en lugar de fallar.",
         "width": 780,
         "height": 520,
         "color": 6
       },
-      "id": "557e2af7-2e6a-510f-a25e-932862992d26",
-      "name": "Note 47",
+      "id": "c27bff4f-f883-5658-86bd-321c94073272",
+      "name": "Note 50",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -1361,14 +1496,36 @@
       "main": [
         [
           {
-            "node": "Is it really HubSpot?",
+            "node": "Signature inputs",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Is it really HubSpot?": {
+    "Signature inputs": {
+      "main": [
+        [
+          {
+            "node": "Which signature version?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign it the v3 way": {
+      "main": [
+        [
+          {
+            "node": "Signature checks out?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign it the v1 way": {
       "main": [
         [
           {
@@ -1556,6 +1713,24 @@
         [
           {
             "node": "Mark deal as failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Which signature version?": {
+      "main": [
+        [
+          {
+            "node": "Sign it the v3 way",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sign it the v1 way",
             "type": "main",
             "index": 0
           }
