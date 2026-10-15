@@ -89,7 +89,7 @@ def hs_search(name, filters, props, x, y):
     }, x, y, cred={"hubspotAppToken": HUBSPOT_CRED})
 
 
-def hs_update(name, deal_id_expr, custom, x, y):
+def hs_update(name, deal_id_expr, custom, x, y, **extra):
     return node(name, "n8n-nodes-base.hubspot", 2.2, {
         "authentication": "appToken",
         "resource": "deal",
@@ -98,13 +98,22 @@ def hs_update(name, deal_id_expr, custom, x, y):
         "updateFields": {"customPropertiesUi": {"customPropertiesValues": [
             {"property": k, "value": v} for k, v in custom
         ]}},
-    }, x, y, cred={"hubspotAppToken": HUBSPOT_CRED})
+    }, x, y, cred={"hubspotAppToken": HUBSPOT_CRED}, **extra)
 
 
 def allsign(name, params, x, y, **extra):
     return node(name, "n8n-nodes-allsign.allsign", 1,
                 {"resource": "document", **params}, x, y,
                 cred={"allSignApi": ALLSIGN_CRED}, **extra)
+
+
+# La llave que evita cobrar dos veces. Tiene que ser un UUID v4 —el backend lo
+# valida— y, sobre todo, tiene que salir del NEGOCIO y no de la ejecución: si
+# sale de la ejecución, el ciclo siguiente la cambia y la API ve una peticion
+# nueva, crea otro contrato y vuelve a cobrar.
+def clave(prefijo, semilla):
+    return ("={{ ('" + prefijo + "-' + " + semilla + ").hash('sha256')"
+            ".replace(/^(.{8})(.{4}).(.{3}).(.{3})(.{12}).*$/, '$1-$2-4$3-8$4-$5') }}")
 
 
 def note_body(deal_id_expr, body_expr, attachments_expr=None):
@@ -191,6 +200,9 @@ else:
     s1 = hs_search("Deals ready for their contract", [
         {"propertyName": "dealstage", "operator": "EQ", "value": "contractsent"},
         {"propertyName": "allsign_document_id", "operator": "NOT_HAS_PROPERTY"},
+        # Un negocio marcado como `error` no se reintenta solo cada cinco minutos.
+        # Para reintentarlo, una persona borra el estado y el id a mano.
+        {"propertyName": "allsign_contract_status", "operator": "NOT_HAS_PROPERTY"},
     ], ["dealname", "amount", "closedate", "allsign_document_id"], 240, Y1)
 
     START_CHAIN = [(t1, s1)]
@@ -257,10 +269,21 @@ prep = node("Prepare contract data", "n8n-nodes-base.set", 3.4, {
         # Los tres valores que no vienen del CRM sino de ti. Van aqui, con nombre
         # propio, y no escondidos dentro del JSON del contrato: son los que cada
         # quien cambia al instalar la plantilla.
-        {"id": "a10", "name": "empresa_emisora", "type": "string", "value": "Tu empresa"},
+        # Va VACÍO a propósito. Si alguien no lo llena, AllSign rechaza el contrato
+        # con un 422 y se entera; con un ejemplo dentro, el cliente recibiría un
+        # acuerdo que dice "entre Tu empresa".
+        {"id": "a10", "name": "empresa_emisora", "type": "string", "value": ""},
         {"id": "a11", "name": "vigencia", "type": "string", "value": "dos años"},
         {"id": "a12", "name": "jurisdiccion", "type": "string", "value": "Ciudad de México"},
-    ]},
+        # Quien firma por tu empresa. Su correo tiene que ser distinto al del
+        # cliente: la API rechaza dos firmantes con el mismo.
+        {"id": "a13", "name": "emisor_nombre", "type": "string", "value": ""},
+        {"id": "a14", "name": "emisor_correo", "type": "string", "value": ""},
+        # El nombre del negocio es interno y a veces dice cosas como "Renovación
+        # 2027 - 2a llamada". En el contrato queda "con motivo de …", así que va
+        # una frase legible.
+        {"id": "a15", "name": "objeto", "type": "string",
+         "value": "la evaluación de una posible relación comercial"},    ]},
     "options": {},
 }, 1200, Y1)
 
@@ -287,40 +310,71 @@ create = allsign("Create contract in AllSign", {
     "templateId": "={{ $json.templateId }}",
     "templateValues": "={{ JSON.stringify({ nombre_cliente: $json.contactName, "
                       "empresa_cliente: $json.company || $json.dealName, correo_cliente: $json.email, "
-                      "objeto: $json.dealName, fecha_efectiva: $today.toFormat('dd/MM/yyyy'), "
+                      "objeto: $json.objeto, fecha_efectiva: $today.toFormat('dd/MM/yyyy'), "
                       "empresa_emisora: $json.empresa_emisora, vigencia: $json.vigencia, "
                       "jurisdiccion: $json.jurisdiccion }) }}",
-    "signers": {"signerValues": [{
-        "name": "={{ $json.contactName }}",
-        "deliveryMethod": "={{ $json.channel }}",
-        "email": "={{ $json.email }}",
-        "whatsapp": "={{ $json.phone }}",
-        "roleName": "cliente",
-    }]},
-    "signatureValidations": {"verifyAutografa": True, "verifyNom151": True},
-}, 1920, Y1)
+    "signers": {"signerValues": [
+        # Las dos partes firman. El acuerdo es recíproco, así que la empresa que
+        # revela también se obliga. Ojo: los dos correos tienen que ser distintos,
+        # la API rechaza dos firmantes con el mismo.
+        {
+            "name": "={{ $json.emisor_nombre }}",
+            "deliveryMethod": "email",
+            "email": "={{ $json.emisor_correo }}",
+            "roleName": "emisor",
+        },
+        {
+            "name": "={{ $json.contactName }}",
+            "deliveryMethod": "={{ $json.channel }}",
+            "email": "={{ $json.email }}",
+            "whatsapp": "={{ $json.phone }}",
+            "roleName": "cliente",
+        },
+    ]},    "signatureValidations": {"verifyAutografa": True, "verifyNom151": True},
+    "configuration": {"idempotencyKey": clave("allsign-hubspot-create", "$json.dealId")},
+}, 1920, Y1, onError="continueErrorOutput")
+
+# Guardar el id ANTES de enviar. Si el envío falla y el id no estaba guardado,
+# el ciclo siguiente no encuentra el contrato, crea otro y cobra otra vez.
+save_created = hs_update("Save contract ID on the deal", "={{ $('Prepare contract data').item.json.dealId }}", [
+    ("allsign_document_id", "={{ $('Create contract in AllSign').item.json.id }}"),
+    ("allsign_contract_status", "created"),
+], 2160, Y1, onError="continueErrorOutput")
 
 send = allsign("Send for signature", {
     "operation": "sendDocument",
-    "documentId": "={{ $json.id }}",
-}, 2160, Y1)
+    # El documento ya no llega por la entrada: ahora entra el deal. El id se lee
+    # del nodo que lo creó.
+    "documentId": "={{ $('Create contract in AllSign').item.json.id }}",
+    "idempotencyKey": clave("allsign-hubspot-send", "$('Create contract in AllSign').item.json.id"),
+}, 2400, Y1, onError="continueErrorOutput")
 
-save = hs_update("Save contract ID on the deal", "={{ $('Prepare contract data').item.json.dealId }}", [
-    ("allsign_document_id", "={{ $('Create contract in AllSign').item.json.id }}"),
+save_sent = hs_update("Mark contract as sent", "={{ $('Prepare contract data').item.json.dealId }}", [
     ("allsign_contract_status", "sent"),
-], 2400, Y1)
+], 2640, Y1)
 
-note1 = hs_http("Log 'contract sent' on the deal", "POST", HS + "/crm/v3/objects/notes", 2640, Y1,
+note1 = hs_http("Log 'contract sent' on the deal", "POST", HS + "/crm/v3/objects/notes", 2880, Y1,
                 body=note_body("{{ $('Prepare contract data').item.json.dealId }}",
                                "Contract sent for signature via AllSign ({{ $('Create contract in AllSign').item.json.id }}) "
                                "by {{ $('Prepare contract data').item.json.channel }} to {{ $('Prepare contract data').item.json.contactName }}."))
 
+# Todo lo que puede fallar termina aquí, y el negocio queda marcado. Así nadie se
+# queda esperando un contrato que nunca salió, y el reloj no lo reintenta solo.
+failed = hs_update("Mark deal as failed", "={{ $('" + DEAL + "').item.json.id }}", [
+    ("allsign_contract_status", "error"),
+], 2160, Y1 + 260)
+
 for a, b in START_CHAIN + [(ENTRY, c1), (c1, if1), (c2, prep), (prep, sw),
-                           (create, send), (send, save), (save, note1)]:
-    link(a, b)
+                           (create, save_created), (save_created, send),
+                           (send, save_sent), (save_sent, note1)]:    link(a, b)
 link(if1, c2, 0)
 link(sw, create, 0)
 link(sw, create, 1)
+# Las salidas de error: sin contacto, y las tres operaciones que pueden tronar.
+link(if1, failed, 1)
+link(create, failed, 1)
+link(save_created, failed, 1)
+link(send, failed, 1)
 
 # ───────────────────────── FLOW 2 — signed → close the loop ─────────────────────────
 Y2 = 1100
@@ -353,7 +407,12 @@ ev = allsign("Signed PDF + NOM-151 certificate", {
 ready = node("Evidence ready?", "n8n-nodes-base.if", 2.2, {
     "conditions": {
         "options": {"caseSensitive": True, "leftValue": "", "typeValidation": "strict", "version": 2},
-        "conditions": [{"id": "avail", "leftValue": "={{ $json.available }}", "rightValue": True,
+        # Espera a que estén LAS DOS cosas, porque la constancia NOM-151 suele
+        # llegar después de la evidencia. Y el ciclo tiene tope: a los quince
+        # intentos sigue con lo que haya, en vez de dar vueltas para siempre.
+        "conditions": [{"id": "avail",
+                        "leftValue": "={{ ($json.available && !!$json.nom151) || $runIndex >= 15 }}",
+                        "rightValue": True,
                         "operator": {"type": "boolean", "operation": "true", "singleValue": True}}],
         "combinator": "and",
     },
@@ -483,9 +542,16 @@ split = node("One item per signer", "n8n-nodes-base.splitOut", 1,
 pending = node("Still pending?", "n8n-nodes-base.filter", 2.2, {
     "conditions": {
         "options": {"caseSensitive": True, "leftValue": "", "typeValidation": "strict", "version": 2},
-        "conditions": [{"id": "pend", "leftValue": "={{ $json.status }}", "rightValue": "pending",
-                        "operator": {"type": "string", "operation": "equals"}}],
-        "combinator": "and",
+        # Una invitación vigente sale como `sent`; `pending` es la que todavía no
+        # se manda. Filtrar solo por `pending` dejaba los recordatorios sin
+        # destinatario: no le llegaban a nadie.
+        "conditions": [
+            {"id": "pend", "leftValue": "={{ $json.status }}", "rightValue": "pending",
+             "operator": {"type": "string", "operation": "equals"}},
+            {"id": "sent", "leftValue": "={{ $json.status }}", "rightValue": "sent",
+             "operator": {"type": "string", "operation": "equals"}},
+        ],
+        "combinator": "or",
     },
     "options": {},
 }, 960, Y3)
@@ -516,23 +582,41 @@ sticky(
     "escritura), `crm.schemas.deals.read` y `files`. Guarda el token en la credencial "
     "*HubSpot App Token*.\n"
     "3. En HubSpot agrega dos **propiedades de negocio**: `allsign_document_id` (texto de "
-    "una línea) y `allsign_contract_status` (desplegable con `sent` y `signed`).\n"
+    "una línea) y `allsign_contract_status` (desplegable con `created`, `sent`, `signed` "
+    "y `error`). Un negocio marcado `error` no se reintenta solo: para reintentarlo, borra "
+    "esas dos propiedades a mano.\n"
     "4. Sube tu contrato como **plantilla** en AllSign y pega su id `tmpl_…` en *Prepare "
-    "contract data*. En ese mismo nodo, más abajo, están las tres que salen de ti y no "
-    "del CRM: **empresa_emisora**, **vigencia** y **jurisdiccion**. Cámbialas una vez. "
-    "En este repo, "
+    "contract data*. En ese mismo nodo, más abajo, están las que salen de ti y no del "
+    "CRM: **empresa_emisora**, **emisor_nombre**, **emisor_correo**, **vigencia**, "
+    "**jurisdiccion** y **objeto**. Las tres primeras van vacías a propósito: si no las "
+    "llenas, AllSign rechaza el contrato con un 422 y te enteras, en vez de mandarle a tu "
+    "cliente un acuerdo con un texto de ejemplo. El correo del emisor tiene que ser "
+    "distinto al del cliente: la API no acepta dos firmantes con el mismo.\n"
+    "5. En AllSign, dile a la plantilla dónde van las firmas. Una sola vez, con "
+    "`PUT /v3/templates/{tuPlantilla}/signing` y este cuerpo:\n"
+    "```json\n"
+    "{\"roles\": [\n"
+    "  {\"name\": \"emisor\",  \"fields\": [{\"roleName\": \"emisor\",  \"kind\": \"signature\", \"page\": 3,\n"
+    "     \"rect\": {\"x\": 8,  \"y\": 30, \"width\": 35, \"height\": 7},\n"
+    "     \"anchor\": \"Firma por la empresa\", \"expect\": 1, \"onMiss\": \"fail\"}]},\n"
+    "  {\"name\": \"cliente\", \"fields\": [{\"roleName\": \"cliente\", \"kind\": \"signature\", \"page\": 3,\n"
+    "     \"rect\": {\"x\": 55, \"y\": 30, \"width\": 35, \"height\": 7},\n"
+    "     \"anchor\": \"Firma por el cliente\", \"expect\": 1, \"onMiss\": \"fail\"}]}\n"
+    "]}\n"
+    "```\n"
+    "Sin esto, AllSign pone las firmas al pie de la **primera** página, encima de las "
+    "cláusulas. Los textos del `anchor` son los que trae el acuerdo de este repo; si usas "
+    "otro documento, pon los tuyos y que aparezcan una sola vez.\n"    "En este repo, "
     "`examples/NDA_Plantilla_AllSign_ES.docx` es un acuerdo de confidencialidad en español "
     "con esas mismas variables.\n"
-    "5. Los dos nodos de correo traen direcciones de ejemplo (`sales@example.com`) que "
+    "6. Los dos nodos de correo traen direcciones de ejemplo (`sales@example.com`) que "
     "rebotan. Conecta tu servidor de correo y pon tu remitente y tu destinatario, o "
     "bórralos.\n"
-    "6. Publica el flujo. Mueve un negocio a **Contrato enviado** y velo salir.\n\n" +
-    ("7. En esa misma aplicación privada abre la pestaña **Webhooks**, pega como URL de "
-     "destino la dirección de producción del nodo *HubSpot calls when a deal changes* y "
-     "suscríbete a **Negocio → Propiedad modificada → Deal Stage**. No hace falta cuenta de "
-     "desarrollador ni aplicación pública. El flujo tiene que estar publicado antes, si no "
-     "la dirección todavía no contesta.\n\n" if WEBHOOK else "") +
-    "**¿Correo o WhatsApp?** Lo eliges tú: abre *Prepare contract data*, campo `channel`, "
+    "7. Publica el flujo. Mueve un negocio a **Contrato enviado** y velo salir.\n\n"
+    "**¿Otro embudo?** Las etapas `contractsent` y `closedwon` son las del embudo que "
+    "HubSpot trae de fábrica. Si usas uno propio, cambia la etapa en dos nodos: la que "
+    "busca los negocios al principio, y *Move the deal to Closed Won* al final. El "
+    "identificador de tu etapa sale de HubSpot, en la configuración del embudo.\n\n"    "**¿Correo o WhatsApp?** Lo eliges tú: abre *Prepare contract data*, campo `channel`, "
     "y en la primera línea cambia `prefiere` de `email` a `whatsapp`. Para WhatsApp el "
     "teléfono tiene que poder completarse con la lada del país que traiga el contacto en "
     "HubSpot; si no se puede, ese contrato se va por correo en lugar de fallar.",
