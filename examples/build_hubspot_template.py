@@ -2,10 +2,12 @@
 """Genera el workflow "HubSpot Closed Won → AllSign contract" para n8n.
 
 Uso:  python3 build_hubspot_template.py [--local] > salida.json
-  --local  pone las credenciales y el template ID del n8n local de Sofía
-           (para probar). Sin la bandera sale la versión publicable.
+  --local  toma las credenciales y la plantilla de tu entorno, para probar:
+           N8N_CRED_HUBSPOT, N8N_CRED_SMTP, N8N_CRED_ALLSIGN y
+           ALLSIGN_TEMPLATE_ID. Sin la bandera sale la versión publicable.
 """
 import json
+import os
 import sys
 import uuid
 
@@ -13,12 +15,17 @@ LOCAL = "--local" in sys.argv
 # Arranque en tiempo real: HubSpot avisa en vez de que nosotros preguntemos.
 WEBHOOK = "--webhook" in sys.argv
 
-HUBSPOT_CRED = {"id": "tvmQvR2REPDObmRZ", "name": "HubSpot App Token account"} if LOCAL \
-    else {"id": "", "name": "HubSpot App Token"}
-SMTP_CRED = {"id": "", "name": "SMTP account"}
-ALLSIGN_CRED = {"id": "smokeAllSignDev01", "name": "[smoke] AllSign dev"} if LOCAL \
-    else {"id": "", "name": "AllSign API"}
-TEMPLATE_ID = "tmpl_95f355eeb6ba4bfebf73a797e37434d4" if LOCAL else "tmpl_REPLACE_ME"
+# El modo --local inyecta las credenciales y la plantilla de QUIEN lo corra, no
+# las de nadie en particular: salen del entorno. Antes venían escritas aquí, y
+# eso dejaba ids de una cuenta concreta dentro de un repo público.
+def _del_entorno(variable, por_defecto=""):
+    return os.environ.get(variable, por_defecto) if LOCAL else por_defecto
+
+
+HUBSPOT_CRED = {"id": _del_entorno("N8N_CRED_HUBSPOT"), "name": "HubSpot App Token"}
+SMTP_CRED = {"id": _del_entorno("N8N_CRED_SMTP"), "name": "SMTP account"}
+ALLSIGN_CRED = {"id": _del_entorno("N8N_CRED_ALLSIGN"), "name": "AllSign API"}
+TEMPLATE_ID = _del_entorno("ALLSIGN_TEMPLATE_ID", "tmpl_REPLACE_ME")
 
 # n8n guarda la ruta de cada disparador en una tabla global: si las dos plantillas
 # piden la misma, la segunda que prendas se queda sin registrar. Cada plantilla
@@ -164,34 +171,109 @@ def _filter(name, conditions, x, y):
 
 
 if WEBHOOK:
-    # HubSpot manda un arreglo de eventos por llamada, y avisa de CUALQUIER cambio
-    # suscrito: hay que abrirlo evento por evento y quedarse solo con los que
-    # movieron la etapa a Contrato enviado.
+    # Esta direccion es publica: cualquiera que la conozca puede llamarla. Lo
+    # unico que separa un aviso de HubSpot de uno inventado es la firma, asi que
+    # se verifica antes de mirar el contenido. Sin esto, con la direccion y el
+    # numero de un negocio se pueden mandar contratos reales, y cobrados.
     t1 = node("HubSpot calls when a deal changes", "n8n-nodes-base.webhook", 2, {
         "httpMethod": "POST",
-        "path": "hubspot-deal-closed",
+        # La ruta la eliges tu al instalar. Si sale de un texto fijo, cualquiera
+        # la calcula leyendo este repo.
+        "path": "cambia-esto-por-algo-tuyo",
+        "responseMode": "responseNode",
+        "options": {"rawBody": True},
+    }, -1200, Y1, webhookId=wh("hubspot-deal-closed"))
+
+    firma = node("Is it really HubSpot?", "n8n-nodes-base.code", 2, {
+        "jsCode": """const crypto = require('crypto');
+
+// El secreto de cliente de tu aplicacion privada. NO es el token pat-...; esta
+// en la pestana Auth de la app. Guardalo como variable de entorno de n8n.
+const secreto = $env.HUBSPOT_CLIENT_SECRET;
+if (!secreto) {
+  return [{ json: { valida: false, porque: 'falta HUBSPOT_CLIENT_SECRET' } }];
+}
+
+const cabeceras = $input.first().json.headers ?? {};
+const v3 = cabeceras['x-hubspot-signature-v3'];
+const marca = cabeceras['x-hubspot-request-timestamp'];
+
+// El cuerpo CRUDO, byte por byte. Si se usa el JSON ya parseado, cualquier
+// diferencia de orden o de espacios rompe la firma aunque el aviso sea legitimo.
+const crudo = (await this.helpers.getBinaryDataBuffer(0, 'data')).toString('utf8');
+
+const iguales = (a, b) => {
+  const x = Buffer.from(a ?? '');
+  const y = Buffer.from(b ?? '');
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
+};
+
+let valida = false;
+if (v3) {
+  // v3: se firma metodo + url + cuerpo + marca de tiempo, y la entrega caduca.
+  if (!marca || Math.abs(Date.now() - Number(marca)) > 5 * 60 * 1000) {
+    return [{ json: { valida: false, porque: 'aviso viejo' } }];
+  }
+  const url = $input.first().json.webhookUrl;
+  const base = 'POST' + url + crudo + marca;
+  valida = iguales(v3, crypto.createHmac('sha256', secreto).update(base).digest('base64'));
+} else {
+  // v1, la que mandan las apps privadas: sha256 del secreto pegado al cuerpo.
+  const esperada = crypto.createHash('sha256').update(secreto + crudo).digest('hex');
+  valida = iguales(cabeceras['x-hubspot-signature'], esperada);
+}
+
+return [{ json: { valida, eventos: valida ? JSON.parse(crudo) : [] } }];""",
+    }, -960, Y1)
+
+    es_valida = node("Signature checks out?", "n8n-nodes-base.if", 2.2, {
+        "conditions": {
+            "options": {"caseSensitive": True, "leftValue": "", "typeValidation": "strict", "version": 2},
+            "conditions": [{"id": "ok", "leftValue": "={{ $json.valida }}", "rightValue": True,
+                            "operator": {"type": "boolean", "operation": "true", "singleValue": True}}],
+            "combinator": "and",
+        },
         "options": {},
-    }, -720, Y1, webhookId=wh("hubspot-deal-closed"))
+    }, -720, Y1)
+
+    # HubSpot reintenta hasta diez veces en 24 horas si recibe un 4xx o 5xx, o si
+    # tardas mas de cinco segundos. Por eso se contesta de inmediato y el trabajo
+    # sigue por su cuenta.
+    ok200 = node("Thanks, got it", "n8n-nodes-base.respondToWebhook", 1.1, {
+        "respondWith": "noData", "options": {"responseCode": 200},
+    }, -480, Y1 - 160)
+
+    no401 = node("Not HubSpot — refuse", "n8n-nodes-base.respondToWebhook", 1.1, {
+        "respondWith": "text", "responseBody": "invalid signature",
+        "options": {"responseCode": 401},
+    }, -480, Y1 + 200)
 
     split1 = node("One item per event", "n8n-nodes-base.splitOut", 1, {
-        "fieldToSplitOut": "body", "options": {},
-    }, -480, Y1)
+        "fieldToSplitOut": "eventos", "options": {},
+    }, -240, Y1)
 
     onlywon = _filter("Moved to Contract Sent?", [
         _cond("prop", "={{ $json.propertyName }}", "dealstage"),
-        _cond("val", "={{ $json.propertyValue }}", "contractsent"),
-    ], -240, Y1)
+    ], 0, Y1)
 
+    # Se vuelve a leer el negocio en HubSpot en vez de creerle al aviso: el
+    # cuerpo dice en que etapa quedo, pero eso solo lo confirma la fuente.
     s1 = hs_http("The deal that just moved", "GET",
                  "=" + HS + "/crm/v3/objects/deals/{{ $json.objectId }}"
-                 "?properties=dealname,amount,closedate,allsign_document_id", 0, Y1)
+                 "?properties=dealname,amount,closedate,allsign_document_id,"
+                 "allsign_contract_status,dealstage", 240, Y1)
 
-    fresh = _filter("No contract on it yet?", [
+    fresh = _filter("Really in Contract Sent, with no contract?", [
+        _cond("etapa", "={{ $json.properties.dealstage }}", "contractsent"),
         _cond("nodoc", "={{ $json.properties.allsign_document_id }}", "",
               operation="empty", singleValue=True),
-    ], 240, Y1)
+        _cond("noestado", "={{ $json.properties.allsign_contract_status }}", "",
+              operation="empty", singleValue=True),
+    ], 480, Y1)
 
-    START_CHAIN = [(t1, split1), (split1, onlywon), (onlywon, s1), (s1, fresh)]
+    START_CHAIN = [(t1, firma), (firma, es_valida), (es_valida, split1),
+                   (split1, onlywon), (onlywon, s1), (s1, fresh)]
+    # el cableado de las dos respuestas va más abajo, con el resto del flujo
     ENTRY = fresh  # el nodo que le pasa el deal al resto del flujo
 else:
     t1 = node("Every 5 minutes", "n8n-nodes-base.scheduleTrigger", 1.2,
@@ -210,8 +292,10 @@ else:
 
 DEAL = s1  # el nodo que trae el deal, se llama distinto en cada variante
 
+X1 = 720 if WEBHOOK else 480   # el arranque en tiempo real ocupa más a la izquierda
+
 c1 = hs_http("Contact linked to the deal", "GET",
-             "=" + HS + "/crm/v4/objects/deals/{{ $json.id }}/associations/contacts", 480, Y1)
+             "=" + HS + "/crm/v4/objects/deals/{{ $json.id }}/associations/contacts", X1, Y1)
 
 if1 = node("Deal has a contact?", "n8n-nodes-base.if", 2.2, {
     "conditions": {
@@ -221,11 +305,11 @@ if1 = node("Deal has a contact?", "n8n-nodes-base.if", 2.2, {
         "combinator": "and",
     },
     "options": {},
-}, 720, Y1)
+}, X1 + 240, Y1)
 
 c2 = hs_http("Contact details", "GET",
              "=" + HS + "/crm/v3/objects/contacts/{{ $json.results[0].toObjectId }}"
-             "?properties=firstname,lastname,email,phone,mobilephone,company,country", 960, Y1)
+             "?properties=firstname,lastname,email,phone,mobilephone,company,country", X1 + 480, Y1)
 
 prep = node("Prepare contract data", "n8n-nodes-base.set", 3.4, {
     "mode": "manual",
@@ -285,7 +369,7 @@ prep = node("Prepare contract data", "n8n-nodes-base.set", 3.4, {
         {"id": "a15", "name": "objeto", "type": "string",
          "value": "la evaluación de una posible relación comercial"},    ]},
     "options": {},
-}, 1200, Y1)
+}, X1 + 720, Y1)
 
 sw = node("WhatsApp or email?", "n8n-nodes-base.switch", 3.2, {
     "rules": {"values": [
@@ -301,7 +385,7 @@ sw = node("WhatsApp or email?", "n8n-nodes-base.switch", 3.2, {
          "renameOutput": True, "outputKey": "Email"},
     ]},
     "options": {},
-}, 1440, Y1)
+}, X1 + 960, Y1)
 
 create = allsign("Create contract in AllSign", {
     "operation": "createDocument",
@@ -332,14 +416,14 @@ create = allsign("Create contract in AllSign", {
         },
     ]},    "signatureValidations": {"verifyAutografa": True, "verifyNom151": True},
     "configuration": {"idempotencyKey": clave("allsign-hubspot-create", "$json.dealId")},
-}, 1920, Y1, onError="continueErrorOutput")
+}, X1 + 1440, Y1, onError="continueErrorOutput")
 
 # Guardar el id ANTES de enviar. Si el envío falla y el id no estaba guardado,
 # el ciclo siguiente no encuentra el contrato, crea otro y cobra otra vez.
 save_created = hs_update("Save contract ID on the deal", "={{ $('Prepare contract data').item.json.dealId }}", [
     ("allsign_document_id", "={{ $('Create contract in AllSign').item.json.id }}"),
     ("allsign_contract_status", "created"),
-], 2160, Y1, onError="continueErrorOutput")
+], X1 + 1680, Y1, onError="continueErrorOutput")
 
 send = allsign("Send for signature", {
     "operation": "sendDocument",
@@ -347,13 +431,13 @@ send = allsign("Send for signature", {
     # del nodo que lo creó.
     "documentId": "={{ $('Create contract in AllSign').item.json.id }}",
     "idempotencyKey": clave("allsign-hubspot-send", "$('Create contract in AllSign').item.json.id"),
-}, 2400, Y1, onError="continueErrorOutput")
+}, X1 + 1920, Y1, onError="continueErrorOutput")
 
 save_sent = hs_update("Mark contract as sent", "={{ $('Prepare contract data').item.json.dealId }}", [
     ("allsign_contract_status", "sent"),
-], 2640, Y1)
+], X1 + 2160, Y1)
 
-note1 = hs_http("Log 'contract sent' on the deal", "POST", HS + "/crm/v3/objects/notes", 2880, Y1,
+note1 = hs_http("Log 'contract sent' on the deal", "POST", HS + "/crm/v3/objects/notes", X1 + 2400, Y1,
                 body=note_body("{{ $('Prepare contract data').item.json.dealId }}",
                                "Contract sent for signature via AllSign ({{ $('Create contract in AllSign').item.json.id }}) "
                                "by {{ $('Prepare contract data').item.json.channel }} to {{ $('Prepare contract data').item.json.contactName }}."))
@@ -362,12 +446,17 @@ note1 = hs_http("Log 'contract sent' on the deal", "POST", HS + "/crm/v3/objects
 # queda esperando un contrato que nunca salió, y el reloj no lo reintenta solo.
 failed = hs_update("Mark deal as failed", "={{ $('" + DEAL + "').item.json.id }}", [
     ("allsign_contract_status", "error"),
-], 2160, Y1 + 260)
+], X1 + 1680, Y1 + 260)
 
 for a, b in START_CHAIN + [(ENTRY, c1), (c1, if1), (c2, prep), (prep, sw),
                            (create, save_created), (save_created, send),
                            (send, save_sent), (save_sent, note1)]:    link(a, b)
 link(if1, c2, 0)
+if WEBHOOK:
+    # La salida 0 del IF es la firma buena: contesta 200 y sigue. La 1 es la
+    # mala: contesta 401 y ahí termina.
+    link(es_valida, ok200, 0)
+    link(es_valida, no401, 1)
 link(sw, create, 0)
 link(sw, create, 1)
 # Las salidas de error: sin contacto, y las tres operaciones que pueden tronar.
@@ -612,7 +701,23 @@ sticky(
     "6. Los dos nodos de correo traen direcciones de ejemplo (`sales@example.com`) que "
     "rebotan. Conecta tu servidor de correo y pon tu remitente y tu destinatario, o "
     "bórralos.\n"
-    "7. Publica el flujo. Mueve un negocio a **Contrato enviado** y velo salir.\n\n"
+    "7. Publica el flujo. Mueve un negocio a **Contrato enviado** y velo salir.\n\n" +
+    ("8. Abre el nodo *HubSpot calls when a deal changes* y **cambia la ruta** por algo "
+     "tuyo. Viene con un texto de relleno a propósito: si la dejas, cualquiera que lea "
+     "este repo puede adivinar tu dirección.\n"
+     "9. En la aplicación privada, pestaña **Auth**, copia el **secreto de cliente**. No "
+     "es el token `pat-…`. Guárdalo en n8n como variable de entorno "
+     "`HUBSPOT_CLIENT_SECRET`. Sin él, el flujo rechaza todos los avisos.\n"
+     "10. En esa misma aplicación abre la pestaña **Webhooks**, pega como URL de destino "
+     "la dirección de producción de ese nodo y suscríbete a **Negocio → Propiedad "
+     "modificada → Deal Stage**. No hace falta cuenta de desarrollador ni aplicación "
+     "pública. El flujo tiene que estar publicado antes, si no la dirección todavía no "
+     "contesta.\n\n"
+     "**Por qué tanto cuidado:** esa dirección es pública y quien la conozca puede "
+     "llamarla. Con ella y el número de un negocio, alguien de fuera podría mandar "
+     "contratos de verdad, y cobrados. Por eso el flujo verifica la firma de HubSpot "
+     "antes de mirar el contenido, y vuelve a leer el negocio en HubSpot en lugar de "
+     "creerle al aviso.\n\n" if WEBHOOK else "") +
     "**¿Otro embudo?** Las etapas `contractsent` y `closedwon` son las del embudo que "
     "HubSpot trae de fábrica. Si usas uno propio, cambia la etapa en dos nodos: la que "
     "busca los negocios al principio, y *Move the deal to Closed Won* al final. El "
