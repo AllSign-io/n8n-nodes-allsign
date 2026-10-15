@@ -560,7 +560,8 @@ wait_ev = node("Wait 1 minute", "n8n-nodes-base.wait", 1.1, {"amount": 60, "unit
 
 files = node("List files to attach", "n8n-nodes-base.code", 2, {
     "jsCode": (
-        "// One item per file that exists. NOM-151 is null for sandbox (test-mode) documents.\n"
+        "// Un item por archivo que EXISTA. La constancia NOM-151 puede llegar después\n"
+        "// que la evidencia, y en sandbox no llega nunca.\n"
         "const ev = $input.first().json;\n"
         "const docId = ev.documentId;\n"
         "const out = [];\n"
@@ -597,7 +598,10 @@ note2 = hs_http("Attach evidence to the deal", "POST", HS + "/crm/v3/objects/not
                 body=note_body("{{ $('Deal for this contract').first().json.id }}",
                                "Contract signed by all parties in AllSign "
                                "({{ $('Contract signed').first().json.data.documentId }}). "
-                               "Attached: signed PDF and NOM-151 certificate.",
+                               # Lo que se adjuntó de verdad. La constancia NOM-151 puede
+                               # tardar más que la evidencia, y en sandbox no llega nunca:
+                               # decir siempre que va adjunta sería mentira.
+                               "Attached: {{ $('List files to attach').all().map(f => f.json.kind).join(', ') }}.",
                                "{{ $json.fileIds.join(';') }}"))
 
 mark = hs_update("Mark contract as signed", "={{ $('Deal for this contract').first().json.id }}", [

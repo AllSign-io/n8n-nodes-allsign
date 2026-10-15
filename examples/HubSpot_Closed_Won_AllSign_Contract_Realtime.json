@@ -1032,7 +1032,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// One item per file that exists. NOM-151 is null for sandbox (test-mode) documents.\nconst ev = $input.first().json;\nconst docId = ev.documentId;\nconst out = [];\nif (ev.evidencePdf?.url) out.push({ json: { fileName: `${docId}-signed.pdf`, url: ev.evidencePdf.url, kind: 'Signed PDF' } });\nif (ev.nom151?.url) out.push({ json: { fileName: `${docId}-nom151.pdf`, url: ev.nom151.url, kind: 'NOM-151 certificate' } });\nreturn out;"
+        "jsCode": "// Un item por archivo que EXISTA. La constancia NOM-151 puede llegar después\n// que la evidencia, y en sandbox no llega nunca.\nconst ev = $input.first().json;\nconst docId = ev.documentId;\nconst out = [];\nif (ev.evidencePdf?.url) out.push({ json: { fileName: `${docId}-signed.pdf`, url: ev.evidencePdf.url, kind: 'Signed PDF' } });\nif (ev.nom151?.url) out.push({ json: { fileName: `${docId}-nom151.pdf`, url: ev.nom151.url, kind: 'NOM-151 certificate' } });\nreturn out;"
       },
       "id": "fd723333-ab96-53ef-8fb2-6a9298f14ad9",
       "name": "List files to attach",
@@ -1143,7 +1143,7 @@
         "options": {},
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\"properties\": {\"hs_timestamp\": \"{{ $now.toISO() }}\", \"hs_note_body\": \"Contract signed by all parties in AllSign ({{ $('Contract signed').first().json.data.documentId }}). Attached: signed PDF and NOM-151 certificate.\", \"hs_attachment_ids\": \"{{ $json.fileIds.join(';') }}\"}, \"associations\": [{\"to\": {\"id\": \"{{ $('Deal for this contract').first().json.id }}\"}, \"types\": [{\"associationCategory\": \"HUBSPOT_DEFINED\", \"associationTypeId\": 214}]}]}"
+        "jsonBody": "={\"properties\": {\"hs_timestamp\": \"{{ $now.toISO() }}\", \"hs_note_body\": \"Contract signed by all parties in AllSign ({{ $('Contract signed').first().json.data.documentId }}). Attached: {{ $('List files to attach').all().map(f => f.json.kind).join(', ') }}.\", \"hs_attachment_ids\": \"{{ $json.fileIds.join(';') }}\"}, \"associations\": [{\"to\": {\"id\": \"{{ $('Deal for this contract').first().json.id }}\"}, \"types\": [{\"associationCategory\": \"HUBSPOT_DEFINED\", \"associationTypeId\": 214}]}]}"
       },
       "id": "aa0c9112-001a-537a-8cbc-6b4438da89fd",
       "name": "Attach evidence to the deal",
