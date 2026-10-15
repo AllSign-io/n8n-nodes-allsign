@@ -45,9 +45,19 @@ def construir():
     normal.size = Pt(11)
     normal.color.rgb = RGBColor(0x33, 0x33, 0x33)
 
+    # Sin esto Word corrige el documento en inglés y subraya en rojo todo el texto.
+    idioma = doc.styles["Normal"].element.get_or_add_rPr()
+    lang = idioma.makeelement(qn("w:lang"), {qn("w:val"): "es-MX"})
+    idioma.append(lang)
+
+    props = doc.core_properties
+    props.title = "Acuerdo de confidencialidad"
+    props.author = "AllSign"
+    props.language = "es-MX"
+
     titulo = doc.add_paragraph()
     titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    titulo.space_after = Pt(4)
+    titulo.paragraph_format.space_after = Pt(4)
     run = titulo.add_run("ACUERDO DE CONFIDENCIALIDAD")
     run.bold = True
     run.font.size = Pt(22)
@@ -55,7 +65,7 @@ def construir():
 
     bajada = doc.add_paragraph()
     bajada.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    bajada.space_after = Pt(14)
+    bajada.paragraph_format.space_after = Pt(14)
     run = bajada.add_run("Entre las partes que se identifican a continuación")
     run.italic = True
     run.font.size = Pt(12)
@@ -65,9 +75,9 @@ def construir():
     datos.style = "Table Grid"
     filas = [
         ("Fecha de celebración", "{{ fecha_efectiva }}"),
-        ("Parte que revela", "{{ empresa_emisora }}"),
-        ("Parte que recibe", "{{ nombre_cliente }}"),
-        ("Empresa que representa", "{{ empresa_cliente }}"),
+        ("Empresa", "{{ empresa_emisora }}"),
+        ("Representante del cliente", "{{ nombre_cliente }}"),
+        ("Empresa del cliente", "{{ empresa_cliente }}"),
     ]
     for i, (etiqueta, valor) in enumerate(filas):
         celda = datos.cell(i, 0)
@@ -84,35 +94,47 @@ def construir():
 
     doc.add_paragraph()
 
-    def encabezado(numero, texto):
+    def encabezado(numero, texto, pegado=False):
         p = doc.add_paragraph()
-        p.space_before = Pt(16)
-        p.space_after = Pt(6)
+        p.paragraph_format.space_before = Pt(16)
+        p.paragraph_format.space_after = Pt(6)
+        p.paragraph_format.keep_with_next = pegado
         run = p.add_run(f"{numero}. {texto}")
         run.bold = True
         run.font.size = Pt(13)
         run.font.color.rgb = TINTA
 
-    def cuerpo(texto):
+    def cuerpo(texto, pegado=False):
         p = doc.add_paragraph(texto)
         p.paragraph_format.line_spacing = Pt(16)
-        p.space_after = Pt(8)
+        p.paragraph_format.space_after = Pt(8)
+        # Una hoja de firmas suelta se puede separar y pegar a otro documento. Desde la
+        # cláusula 10 todo viaja junto para que caiga en la misma página.
+        p.paragraph_format.keep_with_next = pegado
+        return p
 
     def vinetas(items):
         for item in items:
             p = doc.add_paragraph(item, style="List Bullet")
             p.paragraph_format.line_spacing = Pt(15)
 
-    encabezado(1, "OBJETO")
+    encabezado(1, "OBJETO Y PARTES")
     cuerpo(
-        "Este acuerdo se celebra el {{ fecha_efectiva }} entre {{ empresa_emisora }}, "
-        "en adelante la Parte que Revela, y {{ nombre_cliente }}, en representación de "
-        "{{ empresa_cliente }}, en adelante la Parte que Recibe. Ambas se denominan "
-        "conjuntamente las Partes."
+        "Este acuerdo se celebra el {{ fecha_efectiva }} entre {{ empresa_emisora }} y "
+        "{{ empresa_cliente }}, representada en este acto por {{ nombre_cliente }}. Ambas "
+        "empresas se denominan conjuntamente las Partes, y cada una queda obligada en los "
+        "términos de este acuerdo."
     )
     cuerpo(
-        "Su objeto es proteger la información confidencial que las Partes se compartan "
-        "con motivo de {{ objeto }}."
+        "Quien firma por cada Parte declara contar con las facultades necesarias para "
+        "representarla y obligarla, y que dichas facultades no le han sido revocadas ni "
+        "limitadas a la fecha de firma."
+    )
+    cuerpo(
+        "Su objeto es proteger la información confidencial que las Partes se compartan con "
+        "motivo de {{ objeto }}. El acuerdo es recíproco: cada Parte actúa como Parte "
+        "Reveladora respecto de la información que comparte, y como Parte Receptora "
+        "respecto de la que recibe de la otra."
     )
 
     encabezado(2, "QUÉ SE CONSIDERA INFORMACIÓN CONFIDENCIAL")
@@ -131,11 +153,13 @@ def construir():
         "Datos personales a los que se tenga acceso con motivo de este acuerdo",
     ])
 
-    encabezado(3, "OBLIGACIONES DE LA PARTE QUE RECIBE")
-    cuerpo("La Parte que Recibe se obliga a:")
+    encabezado(3, "OBLIGACIONES DE CADA PARTE")
+    cuerpo(
+        "Cada Parte, respecto de la información confidencial que reciba de la otra, se obliga a:"
+    )
     vinetas([
-        "Guardar la información confidencial con estricta reserva",
-        "No revelarla a terceros sin autorización previa y por escrito",
+        "Guardarla con estricta reserva",
+        "No revelarla a terceros sin autorización previa y por escrito de la Parte que la compartió",
         "Usarla únicamente para el fin descrito en la cláusula primera",
         "Protegerla con el mismo cuidado con que protege la propia, y nunca con menos "
         "del que resulta razonable",
@@ -147,36 +171,47 @@ def construir():
 
     encabezado(4, "TRATAMIENTO DE DATOS PERSONALES")
     cuerpo(
-        "Cuando la información confidencial incluya datos personales, la Parte que Recibe "
-        "los tratará conforme a la Ley Federal de Protección de Datos Personales en Posesión "
-        "de los Particulares, los usará solo para el fin de este acuerdo y los suprimirá o "
-        "devolverá cuando deje de ser necesario conservarlos."
+        "Cuando la información confidencial incluya datos personales, la Parte que los "
+        "reciba los tratará conforme a la Ley Federal de Protección de Datos Personales en "
+        "Posesión de los Particulares vigente y su normativa aplicable, los usará solo para "
+        "el fin de este acuerdo, y los suprimirá o devolverá cuando deje de ser necesario "
+        "conservarlos. Esta obligación aplica a cada Parte respecto de los datos personales "
+        "que reciba de la otra."
     )
 
     encabezado(5, "EXCEPCIONES")
     cuerpo("Este acuerdo no aplica a la información que:")
     vinetas([
         "Ya era del dominio público al momento de compartirse, o llegó a serlo después sin "
-        "culpa de la Parte que Recibe",
-        "La Parte que Recibe ya conocía legítimamente y sin obligación de reserva",
+        "culpa de la Parte que la recibió",
+        "La Parte que la recibió ya conocía legítimamente y sin obligación de reserva",
         "Un tercero le compartió sin violar ninguna obligación de confidencialidad",
         "Desarrolló por su cuenta sin usar la información confidencial",
         "Deba revelarse por mandato de autoridad competente, en cuyo caso avisará a la otra "
         "Parte con la anticipación que le sea posible",
     ])
 
-    encabezado(6, "VIGENCIA")
+    encabezado(6, "VIGENCIA DEL ACUERDO Y DE LA CONFIDENCIALIDAD")
     cuerpo(
-        "Las obligaciones de confidencialidad estarán vigentes durante {{ vigencia }} "
-        "contados a partir de la fecha de celebración, y subsistirán aunque la relación "
-        "entre las Partes termine antes."
+        "Este acuerdo entra en vigor el {{ fecha_efectiva }} y permanece vigente mientras "
+        "las Partes sigan compartiendo información confidencial con motivo de {{ objeto }}. "
+        "Cualquiera de las Partes puede darlo por terminado avisando a la otra por escrito "
+        "con treinta días naturales de anticipación."
+    )
+    cuerpo(
+        "Las obligaciones de confidencialidad subsisten por un plazo de {{ vigencia }}, "
+        "contado a partir de la fecha de celebración, aunque el acuerdo termine antes. "
+        "Tratándose de información que constituya secreto industrial, subsisten mientras "
+        "conserve ese carácter conforme a la ley."
     )
 
     encabezado(7, "DEVOLUCIÓN DE LA INFORMACIÓN")
     cuerpo(
-        "A la terminación de este acuerdo, o cuando la otra Parte lo solicite, la Parte que "
-        "Recibe devolverá o destruirá la información confidencial que tenga en su poder, "
-        "incluidas las copias, y lo confirmará por escrito."
+        "Terminado el acuerdo conforme a la cláusula anterior, o cuando la Parte que "
+        "compartió la información lo solicite, la Parte que la recibió la devolverá o "
+        "destruirá, incluidas las copias, y lo confirmará por escrito. Puede conservar una "
+        "copia únicamente cuando una obligación legal se lo exija, y seguirá protegiéndola "
+        "en los términos de este acuerdo mientras la conserve."
     )
 
     encabezado(8, "INCUMPLIMIENTO")
@@ -186,24 +221,33 @@ def construir():
         "acciones que le correspondan."
     )
 
-    encabezado(9, "LEY APLICABLE Y JURISDICCIÓN")
+    encabezado(9, "LEY APLICABLE Y TRIBUNALES COMPETENTES")
     cuerpo(
-        "Este acuerdo se rige por la legislación aplicable en {{ jurisdiccion }}. Para su "
-        "interpretación y cumplimiento, las Partes se someten a los tribunales competentes "
-        "de dicha jurisdicción y renuncian a cualquier otro fuero que pudiera corresponderles."
+        "Este acuerdo es de naturaleza mercantil y se rige por las leyes federales de los "
+        "Estados Unidos Mexicanos."
+    )
+    cuerpo(
+        "Para su interpretación y cumplimiento, las Partes se someten a los tribunales "
+        "competentes de {{ jurisdiccion }} y renuncian a cualquier otro fuero que pudiera "
+        "corresponderles por razón de sus domicilios presentes o futuros."
     )
 
-    encabezado(10, "FIRMA ELECTRÓNICA")
+    encabezado(10, "FIRMA ELECTRÓNICA", pegado=True)
     cuerpo(
-        "Las Partes aceptan firmar este acuerdo por medios electrónicos y reconocen que la "
-        "firma electrónica y su constancia de conservación, emitida conforme a la NOM-151, "
-        "tienen la misma validez que la firma autógrafa."
+        "Las Partes aceptan celebrar y firmar este acuerdo por medios electrónicos, en los "
+        "términos del Código de Comercio, y reconocen que el mensaje de datos que lo "
+        "contiene les es atribuible.", pegado=True
+    )
+    cuerpo(
+        "La constancia de conservación emitida conforme a la NOM-151 acredita la "
+        "conservación e integridad del documento desde su emisión, y no la validez de la "
+        "firma, que se rige por las disposiciones aplicables.", pegado=True
     )
 
-    doc.add_paragraph()
     p = doc.add_paragraph()
-    p.space_before = Pt(18)
-    p.space_after = Pt(10)
+    p.paragraph_format.space_before = Pt(18)
+    p.paragraph_format.space_after = Pt(10)
+    p.paragraph_format.keep_with_next = True
     run = p.add_run("FIRMAS")
     run.bold = True
     run.font.size = Pt(13)
@@ -211,14 +255,17 @@ def construir():
 
     cuerpo(
         "Leído el contenido de este acuerdo y enteradas las Partes de su alcance y fuerza "
-        "legal, lo firman de conformidad."
+        "legal, lo firman de conformidad quienes las representan.", pegado=True
     )
 
     firmas = doc.add_table(rows=2, cols=2)
     firmas.autofit = True
+    # Las etiquetas de abajo son el ancla de las cajas de firma en AllSign, así que cada
+    # una tiene que aparecer UNA sola vez en todo el documento. Por eso no se repiten las
+    # de la tabla de partes.
     for columna, (quien, quien_detalle) in enumerate([
-        ("{{ empresa_emisora }}", "Parte que revela"),
-        ("{{ nombre_cliente }}", "Parte que recibe  ·  {{ correo_cliente }}"),
+        ("{{ empresa_emisora }}", "Firma por la empresa"),
+        ("{{ nombre_cliente }}", "Firma por el cliente  ·  {{ correo_cliente }}"),
     ]):
         celda = firmas.cell(0, columna)
         celda.paragraphs[0].add_run("\n\n\n_______________________________")
