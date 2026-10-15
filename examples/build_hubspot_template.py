@@ -182,34 +182,44 @@ if WEBHOOK:
         "path": "cambia-esto-por-algo-tuyo",
         "responseMode": "responseNode",
         "options": {"rawBody": True},
-    }, -1200, Y1, webhookId=wh("hubspot-deal-closed"))
+    }, -1440, Y1, webhookId=wh("hubspot-deal-closed"))
+
+    # Con `rawBody` el cuerpo crudo llega como BINARIO, no dentro del JSON. Este
+    # nodo lo pasa a texto. Hace falta el crudo byte por byte: si se vuelve a
+    # serializar el JSON ya parseado, cualquier diferencia de orden o de espacios
+    # rompe la firma de un aviso legítimo.
+    crudo = node("The body, byte for byte", "n8n-nodes-base.extractFromFile", 1, {
+        "operation": "text",
+        "binaryPropertyName": "data",
+        "destinationKey": "cuerpo",
+        "options": {},
+    }, -1200, Y1)
 
     # Un nodo Code no puede usar `crypto`: n8n no le presta ningún módulo de Node
     # a menos que el administrador lo habilite. Por eso la firma se calcula con
     # el nodo Crypto, que viene de fábrica.
     datos = node("Signature inputs", "n8n-nodes-base.set", 3.4, {
         "mode": "manual",
+        "includeOtherFields": True,
         "assignments": {"assignments": [
             # ↓↓↓ PEGA AQUÍ el secreto de cliente de tu aplicación privada de
             # HubSpot. Está en su pestaña Auth, y NO es el token pat-… ↓↓↓
             {"id": "b1", "name": "secreto", "type": "string", "value": ""},
-            {"id": "b2", "name": "cuerpo", "type": "string",
-             "value": "={{ $json.rawBody?.toString() ?? JSON.stringify($json.body) }}"},
+            # Solo hace falta si HubSpot te manda la firma v3: es la dirección
+            # pública de este mismo webhook, tal cual la pegaste en HubSpot.
+            {"id": "b2", "name": "miUrl", "type": "string", "value": ""},
             {"id": "b3", "name": "firmaV1", "type": "string",
-             "value": "={{ $json.headers['x-hubspot-signature'] ?? '' }}"},
+             "value": "={{ $('HubSpot calls when a deal changes').item.json.headers['x-hubspot-signature'] ?? '' }}"},
             {"id": "b4", "name": "firmaV3", "type": "string",
-             "value": "={{ $json.headers['x-hubspot-signature-v3'] ?? '' }}"},
+             "value": "={{ $('HubSpot calls when a deal changes').item.json.headers['x-hubspot-signature-v3'] ?? '' }}"},
             {"id": "b5", "name": "marca", "type": "string",
-             "value": "={{ $json.headers['x-hubspot-request-timestamp'] ?? '' }}"},
-            # Lo que HubSpot firma en cada versión. En la v1 es el secreto pegado
-            # al cuerpo; en la v3, el método, la dirección, el cuerpo y la hora.
+             "value": "={{ $('HubSpot calls when a deal changes').item.json.headers['x-hubspot-request-timestamp'] ?? '' }}"},
+            # Lo que HubSpot firma en la v3: método, dirección, cuerpo y hora.
             {"id": "b6", "name": "aFirmar", "type": "string",
-             "value": "={{ $json.headers['x-hubspot-signature-v3'] "
-                      "? 'POST' + $json.webhookUrl + ($json.rawBody?.toString() ?? JSON.stringify($json.body)) + $json.headers['x-hubspot-request-timestamp'] "
-                      ": '' }}"},
+             "value": "={{ 'POST' + $json.miUrl + $json.cuerpo + $json.marca }}"},
+            # La v3 caduca a los cinco minutos. La v1 no trae hora, así que pasa.
             {"id": "b7", "name": "vigente", "type": "boolean",
-             "value": "={{ !$json.headers['x-hubspot-signature-v3'] "
-                      "|| Math.abs(Date.now() - Number($json.headers['x-hubspot-request-timestamp'])) <= 300000 }}"},
+             "value": "={{ !$json.firmaV3 || Math.abs(Date.now() - Number($json.marca)) <= 300000 }}"},
         ]},
         "options": {},
     }, -960, Y1)
@@ -272,8 +282,18 @@ if WEBHOOK:
     }, 480, Y1 + 300)
 
     split1 = node("One item per event", "n8n-nodes-base.splitOut", 1, {
-        "fieldToSplitOut": "body", "options": {},
+        "fieldToSplitOut": "eventos", "options": {},
     }, 0, Y1)
+
+    # El cuerpo parseado vive en el nodo del webhook, no en el que trae la firma.
+    recupera = node("The events, parsed", "n8n-nodes-base.set", 3.4, {
+        "mode": "manual",
+        "assignments": {"assignments": [
+            {"id": "c1", "name": "eventos", "type": "array",
+             "value": "={{ $('HubSpot calls when a deal changes').item.json.body }}"},
+        ]},
+        "options": {},
+    }, -240, Y1 + 160)
 
     onlywon = _filter("Moved to Contract Sent?", [
         _cond("prop", "={{ $json.propertyName }}", "dealstage"),
@@ -294,8 +314,10 @@ if WEBHOOK:
               operation="empty", singleValue=True),
     ], 720, Y1)
 
-    START_CHAIN = [(t1, datos), (datos, esv3), (hmac3, es_valida), (hash1, es_valida),
-                   (es_valida, split1), (split1, onlywon), (onlywon, s1), (s1, fresh)]
+    START_CHAIN = [(t1, crudo), (crudo, datos), (datos, esv3),
+                   (hmac3, es_valida), (hash1, es_valida),
+                   (es_valida, recupera), (recupera, split1),
+                   (split1, onlywon), (onlywon, s1), (s1, fresh)]
     # el cableado de las dos respuestas va más abajo, con el resto del flujo
     ENTRY = fresh  # el nodo que le pasa el deal al resto del flujo
 else:
@@ -733,10 +755,10 @@ sticky(
      "9. En la aplicación privada, pestaña **Auth**, copia el **secreto de cliente**. No "
      "es el token `pat-…`. Pégalo en la primera línea del nodo *Is it really HubSpot?*, "
      "donde dice `let secreto = ''`. Sin él, el flujo rechaza todos los avisos.\n"
-     "   Si prefieres no dejarlo escrito en el flujo, ponlo en la variable de entorno "
-     "`HUBSPOT_CLIENT_SECRET` y arranca n8n con `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`. "
-     "Por defecto n8n no deja que un nodo Code lea el entorno, así que sin esa bandera "
-     "no funciona.\n"
+     "   Si además HubSpot te manda la firma nueva (`X-HubSpot-Signature-v3`), llena "
+     "también el campo `miUrl` de ese nodo con la dirección pública de este webhook, "
+     "la misma que pegaste en HubSpot. Para la firma de las aplicaciones privadas, que "
+     "es la v1, no hace falta.\n"
      "10. En esa misma aplicación abre la pestaña **Webhooks**, pega como URL de destino "
      "la dirección de producción de ese nodo y suscríbete a **Negocio → Propiedad "
      "modificada → Deal Stage**. No hace falta cuenta de desarrollador ni aplicación "
