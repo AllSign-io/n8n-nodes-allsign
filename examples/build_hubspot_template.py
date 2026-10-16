@@ -774,6 +774,11 @@ sticky(
      "contratos de verdad, y cobrados. Por eso el flujo verifica la firma de HubSpot "
      "antes de mirar el contenido, y vuelve a leer el negocio en HubSpot en lugar de "
      "creerle al aviso.\n\n" if WEBHOOK else "") +
+    "**Dos valores que importan más de lo que parecen.** `vigencia` tiene que traer la "
+    "unidad, por ejemplo *dos años*, porque el contrato dice \"por un plazo de…\". Y "
+    "`jurisdiccion` tiene que ser el domicilio de alguna de las dos empresas o el lugar "
+    "donde se cumple el acuerdo: si pones una ciudad sin relación con ninguna, la "
+    "sumisión a esos tribunales puede no valer.\n\n"
     "**¿Otro embudo?** Las etapas `contractsent` y `closedwon` son las del embudo que "
     "HubSpot trae de fábrica. Si usas uno propio, cambia la etapa en dos nodos: la que "
     "busca los negocios al principio, y *Move the deal to Closed Won* al final. El "
