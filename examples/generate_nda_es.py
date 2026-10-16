@@ -220,7 +220,8 @@ def construir():
         "Las obligaciones de confidencialidad subsisten por un plazo de {{ vigencia }}, "
         "contado a partir de la fecha en que surta efectos la terminación de este acuerdo, y "
         "alcanzan a toda la información "
-        "compartida durante su vigencia. Tratándose de información que constituya secreto "
+        "compartida durante su vigencia y también a la que las Partes se hayan compartido antes "
+        "de la firma con motivo del Fin. Tratándose de información que constituya secreto "
         "industrial, subsisten mientras conserve ese carácter conforme a la ley, y tratándose "
         "de datos personales, subsisten conforme a la ley de la materia."
     )
