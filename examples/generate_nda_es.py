@@ -163,7 +163,8 @@ def construir():
     vinetas([
         "Guardarla con estricta reserva",
         "No revelarla a terceros sin autorización previa y por escrito de la Parte que la "
-        "compartió, salvo a quienes necesiten conocerla en los términos de esta cláusula y "
+        "compartió, salvo a quienes necesiten conocerla y estén sujetos a obligaciones de "
+        "confidencialidad equivalentes, y "
         "salvo lo previsto en la cláusula quinta sobre mandato de autoridad",
         "Usarla únicamente para el Fin",
         "Protegerla con el mismo cuidado con que protege la propia, y nunca con menos "
@@ -177,11 +178,12 @@ def construir():
     encabezado(4, "TRATAMIENTO DE DATOS PERSONALES")
     cuerpo(
         "Cuando la información confidencial incluya datos personales, la Parte que los "
-        "reciba los tratará conforme a la Ley Federal de Protección de Datos Personales en "
+        "reciba o tenga acceso a ellos los tratará conforme a la Ley Federal de Protección de "
+        "Datos Personales en "
         "Posesión de los Particulares vigente y su normativa aplicable, los usará solo para "
         "el Fin, y los suprimirá o devolverá cuando deje de ser necesario "
         "conservarlos. Esta obligación aplica a cada Parte respecto de los datos personales "
-        "que reciba de la otra."
+        "que reciba de la otra o a los que tenga acceso por su conducto."
     )
 
     encabezado(5, "EXCEPCIONES")
@@ -290,7 +292,7 @@ def construir():
     # de la tabla de partes.
     for columna, (quien, quien_detalle) in enumerate([
         ("{{ empresa_emisora }}",
-         "Por conducto de {{ representante_emisor }}\nFirma de la Parte emisora"),
+         "Por conducto de {{ representante_emisor }}  ·  {{ correo_emisor }}\nFirma de la Parte emisora"),
         ("{{ empresa_cliente }}",
          "Por conducto de {{ nombre_cliente }}  ·  {{ correo_cliente }}\nFirma de la Parte cliente"),
     ]):
