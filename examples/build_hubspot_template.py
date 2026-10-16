@@ -250,7 +250,8 @@ create = allsign("Create contract in AllSign", {
     "templateValues": "={{ JSON.stringify({ nombre_cliente: $json.contactName, "
                       "empresa_cliente: $json.company || $json.dealName, correo_cliente: $json.email, "
                       "objeto: $json.objeto, fecha_efectiva: $today.toFormat('dd/MM/yyyy'), "
-                      "empresa_emisora: $json.empresa_emisora, vigencia: $json.vigencia, "
+                      "empresa_emisora: $json.empresa_emisora, representante_emisor: $json.emisor_nombre, "
+                      "vigencia: $json.vigencia, "
                       "jurisdiccion: $json.jurisdiccion }) }}",
     "signers": {"signerValues": [
         # Las dos partes firman. El acuerdo es recíproco, así que la empresa que
