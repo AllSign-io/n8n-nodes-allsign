@@ -251,6 +251,7 @@ create = allsign("Create contract in AllSign", {
                       "empresa_cliente: $json.company || $json.dealName, correo_cliente: $json.email, "
                       "objeto: $json.objeto, fecha_efectiva: $today.toFormat('dd/MM/yyyy'), "
                       "empresa_emisora: $json.empresa_emisora, representante_emisor: $json.emisor_nombre, "
+                      "correo_emisor: $json.emisor_correo, "
                       "vigencia: $json.vigencia, "
                       "jurisdiccion: $json.jurisdiccion }) }}",
     "signers": {"signerValues": [
