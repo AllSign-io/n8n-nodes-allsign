@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "# 1 · Se cierra el negocio → sale el contrato\n\nCada 5 minutos el flujo le pregunta a HubSpot por los negocios en **Contrato enviado** que todavía no tienen contrato de AllSign, arma el documento con tu plantilla y se lo manda al contacto del negocio. Mover el negocio a esa etapa es justo lo que el vendedor ya hace cuando manda un contrato.\n\nLa invitación va por **WhatsApp** cuando el teléfono del contacto se puede completar con la lada de su país, y por **correo** cuando no: mandar medio número no le llega a nadie. El negocio guarda el id y el estado del contrato (`allsign_document_id`, `allsign_contract_status`) para no mandarlo dos veces.",
+        "content": "# 1 · El negocio avanza → sale el contrato\n\nCada 5 minutos el flujo le pregunta a HubSpot por los negocios en **Contrato enviado** que todavía no tienen contrato de AllSign, arma el documento con tu plantilla y se lo manda al contacto. Mover el negocio a esa etapa es justo lo que el vendedor ya hace cuando manda un contrato.\n\nLa invitación va por **WhatsApp** cuando el teléfono del contacto se puede completar con la lada de su país, y por **correo** cuando no: mandar medio número no le llega a nadie. El negocio guarda el id y el estado del contrato (`allsign_document_id`, `allsign_contract_status`) para no mandarlo dos veces.",
         "width": 620,
         "height": 340,
         "color": 4
