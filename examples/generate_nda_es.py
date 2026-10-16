@@ -134,7 +134,8 @@ def construir():
     )
     cuerpo(
         "El objeto de este acuerdo es proteger la información confidencial que las Partes se "
-        "compartan con motivo de {{ objeto }}. El acuerdo es recíproco: cada Parte comparte "
+        "compartan con motivo de {{ objeto }}, al que este acuerdo llama el Fin. Es recíproco: "
+        "cada Parte comparte "
         "información propia y recibe la de la otra."
     )
 
@@ -143,7 +144,7 @@ def construir():
         "Toda información, en cualquier forma o medio, que una Parte comparta con la otra "
         "y que esté marcada como confidencial, o que por su naturaleza y por las circunstancias "
         "en que se comparte deba entenderse como tal. Queda comprendida, de manera "
-        "enunciativa y no limitativa:"
+        "enunciativa y no limitativa, y se considera confidencial aunque no esté marcada:"
     )
     vinetas([
         "Planes de negocio, estrategias e información financiera",
@@ -164,7 +165,7 @@ def construir():
         "No revelarla a terceros sin autorización previa y por escrito de la Parte que la "
         "compartió, salvo a quienes necesiten conocerla en los términos de esta cláusula y "
         "salvo lo previsto en la cláusula quinta sobre mandato de autoridad",
-        "Usarla únicamente para el fin descrito en la cláusula primera",
+        "Usarla únicamente para el Fin",
         "Protegerla con el mismo cuidado con que protege la propia, y nunca con menos "
         "del que resulta razonable",
         "Avisar a la otra Parte en cuanto tenga conocimiento de cualquier divulgación o "
@@ -212,7 +213,8 @@ def construir():
     )
     cuerpo(
         "Los avisos previstos en este acuerdo se darán por escrito, incluso por correo "
-        "electrónico, a la dirección que cada Parte haya usado para firmarlo o a la que "
+        "electrónico, a la dirección de correo electrónico con la que cada Parte haya firmado "
+        "o a la que "
         "después designe por escrito. El aviso surte efectos cuando la otra Parte lo recibe, "
         "y la terminación a los treinta días naturales siguientes."
     )
