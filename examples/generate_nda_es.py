@@ -150,7 +150,8 @@ def construir():
         "Planes de producto, diseños y especificaciones",
         "Listas de clientes, estrategias de mercadotecnia e información de ventas",
         "Programas de cómputo, código fuente, algoritmos y bases de datos",
-        "Datos personales a los que se tenga acceso con motivo de este acuerdo",
+        "Datos personales que una Parte comparta o a los que la otra tenga acceso con "
+        "motivo de este acuerdo",
     ])
 
     encabezado(3, "OBLIGACIONES DE CADA PARTE")
@@ -160,7 +161,8 @@ def construir():
     vinetas([
         "Guardarla con estricta reserva",
         "No revelarla a terceros sin autorización previa y por escrito de la Parte que la "
-        "compartió, salvo a las personas autorizadas conforme a esta misma cláusula",
+        "compartió, salvo a quienes necesiten conocerla en los términos de esta cláusula y "
+        "salvo lo previsto en la cláusula quinta sobre mandato de autoridad",
         "Usarla únicamente para el fin descrito en la cláusula primera",
         "Protegerla con el mismo cuidado con que protege la propia, y nunca con menos "
         "del que resulta razonable",
@@ -205,7 +207,11 @@ def construir():
         "Este acuerdo entra en vigor en la fecha en que lo firme la última de las Partes y "
         "permanece vigente hasta que "
         "cualquiera de las Partes lo dé por terminado, avisando a la otra por escrito con "
-        "treinta días naturales de anticipación."
+        "treinta días naturales de anticipación. La fecha del documento es solo de referencia."
+    )
+    cuerpo(
+        "Los avisos previstos en este acuerdo se darán por escrito, incluso por correo "
+        "electrónico, a la dirección que cada Parte haya usado para firmarlo."
     )
     cuerpo(
         "Las obligaciones de confidencialidad subsisten por un plazo de {{ vigencia }}, "
@@ -222,7 +228,8 @@ def construir():
         "compartió la información lo solicite, la Parte que la recibió la devolverá o "
         "destruirá, incluidas las copias, y lo confirmará por escrito. Puede conservar una "
         "copia únicamente cuando una obligación legal se lo exija, y seguirá protegiéndola "
-        "en los términos de este acuerdo mientras la conserve."
+        "en los términos de este acuerdo mientras la conserve, aun cuando haya concluido el "
+        "plazo previsto en la cláusula sexta."
     )
 
     encabezado(8, "INCUMPLIMIENTO")
