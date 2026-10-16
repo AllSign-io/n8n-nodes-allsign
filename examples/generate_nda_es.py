@@ -131,16 +131,16 @@ def construir():
         "limitadas a la fecha de firma."
     )
     cuerpo(
-        "Su objeto es proteger la información confidencial que las Partes se compartan con "
-        "motivo de {{ objeto }}. El acuerdo es recíproco: cada Parte actúa como Parte "
-        "Reveladora respecto de la información que comparte, y como Parte Receptora "
+        "El objeto de este acuerdo es proteger la información confidencial que las Partes se "
+        "compartan con motivo de {{ objeto }}. El acuerdo es recíproco: cada Parte actúa como "
+        "Parte Reveladora respecto de la información que comparte, y como Parte Receptora "
         "respecto de la que recibe de la otra."
     )
 
     encabezado(2, "QUÉ SE CONSIDERA INFORMACIÓN CONFIDENCIAL")
     cuerpo(
-        "Toda información, verbal o escrita, que una Parte comparta con la otra y que "
-        "esté marcada como confidencial, o que por su naturaleza y por las circunstancias "
+        "Toda información, en cualquier forma o medio, que una Parte comparta con la otra "
+        "y que esté marcada como confidencial, o que por su naturaleza y por las circunstancias "
         "en que se comparte deba entenderse como tal. Queda comprendida, de manera "
         "enunciativa y no limitativa:"
     )
@@ -159,7 +159,8 @@ def construir():
     )
     vinetas([
         "Guardarla con estricta reserva",
-        "No revelarla a terceros sin autorización previa y por escrito de la Parte que la compartió",
+        "No revelarla a terceros sin autorización previa y por escrito de la Parte que la "
+        "compartió, salvo a las personas a que se refiere la última viñeta de esta cláusula",
         "Usarla únicamente para el fin descrito en la cláusula primera",
         "Protegerla con el mismo cuidado con que protege la propia, y nunca con menos "
         "del que resulta razonable",
@@ -185,24 +186,28 @@ def construir():
         "Ya era del dominio público al momento de compartirse, o llegó a serlo después sin "
         "culpa de la Parte que la recibió",
         "La Parte que la recibió ya conocía legítimamente y sin obligación de reserva",
-        "Un tercero le compartió sin violar ninguna obligación de confidencialidad",
-        "Desarrolló por su cuenta sin usar la información confidencial",
-        "Deba revelarse por mandato de autoridad competente, en cuyo caso avisará a la otra "
-        "Parte con la anticipación que le sea posible",
+        "Un tercero compartió con la Parte que la recibió sin violar ninguna obligación de "
+        "confidencialidad",
+        "La Parte que la recibió desarrolló por su cuenta sin usar la información confidencial",
     ])
+    cuerpo(
+        "La Parte que deba revelar información confidencial por mandato de autoridad competente "
+        "lo hará solo en la medida requerida, avisando a la otra Parte con la anticipación que "
+        "le sea posible. Para cualquier otro fin, esa información sigue siendo confidencial."
+    )
 
     encabezado(6, "VIGENCIA DEL ACUERDO Y DE LA CONFIDENCIALIDAD")
     cuerpo(
-        "Este acuerdo entra en vigor el {{ fecha_efectiva }} y permanece vigente mientras "
-        "las Partes sigan compartiendo información confidencial con motivo de {{ objeto }}. "
-        "Cualquiera de las Partes puede darlo por terminado avisando a la otra por escrito "
-        "con treinta días naturales de anticipación."
+        "Este acuerdo entra en vigor el {{ fecha_efectiva }} y permanece vigente hasta que "
+        "cualquiera de las Partes lo dé por terminado, avisando a la otra por escrito con "
+        "treinta días naturales de anticipación."
     )
     cuerpo(
         "Las obligaciones de confidencialidad subsisten por un plazo de {{ vigencia }}, "
-        "contado a partir de la fecha de celebración, aunque el acuerdo termine antes. "
-        "Tratándose de información que constituya secreto industrial, subsisten mientras "
-        "conserve ese carácter conforme a la ley."
+        "contado a partir de la terminación de este acuerdo, y alcanzan a toda la información "
+        "compartida durante su vigencia. Tratándose de información que constituya secreto "
+        "industrial, subsisten mientras conserve ese carácter conforme a la ley, y tratándose "
+        "de datos personales, subsisten conforme a la ley de la materia."
     )
 
     encabezado(7, "DEVOLUCIÓN DE LA INFORMACIÓN")
@@ -240,7 +245,8 @@ def construir():
     )
     cuerpo(
         "La constancia de conservación emitida conforme a la NOM-151 acredita la "
-        "conservación e integridad del documento desde su emisión, y no la validez de la "
+        "conservación e integridad del documento desde la fecha y hora asentadas en la propia "
+        "constancia, y no la validez de la "
         "firma, que se rige por las disposiciones aplicables.", pegado=True
     )
 
@@ -264,8 +270,10 @@ def construir():
     # una tiene que aparecer UNA sola vez en todo el documento. Por eso no se repiten las
     # de la tabla de partes.
     for columna, (quien, quien_detalle) in enumerate([
-        ("{{ empresa_emisora }}", "Firma por la empresa"),
-        ("{{ nombre_cliente }}", "Firma por el cliente  ·  {{ correo_cliente }}"),
+        ("{{ empresa_emisora }}",
+         "Por conducto de {{ representante_emisor }}\nFirma por la empresa"),
+        ("{{ empresa_cliente }}",
+         "Por conducto de {{ nombre_cliente }}  ·  {{ correo_cliente }}\nFirma por el cliente"),
     ]):
         celda = firmas.cell(0, columna)
         celda.paragraphs[0].add_run("\n\n\n_______________________________")
