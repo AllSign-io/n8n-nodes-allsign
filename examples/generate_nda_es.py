@@ -74,7 +74,7 @@ def construir():
     datos = doc.add_table(rows=4, cols=2)
     datos.style = "Table Grid"
     filas = [
-        ("Fecha de celebración", "{{ fecha_efectiva }}"),
+        ("Fecha del documento", "{{ fecha_efectiva }}"),
         ("Empresa", "{{ empresa_emisora }}"),
         ("Representante del cliente", "{{ nombre_cliente }}"),
         ("Empresa del cliente", "{{ empresa_cliente }}"),
@@ -120,8 +120,9 @@ def construir():
 
     encabezado(1, "OBJETO Y PARTES")
     cuerpo(
-        "Este acuerdo se celebra el {{ fecha_efectiva }} entre {{ empresa_emisora }} y "
-        "{{ empresa_cliente }}, representada en este acto por {{ nombre_cliente }}. Ambas "
+        "Este acuerdo se celebra entre {{ empresa_emisora }}, representada por "
+        "{{ representante_emisor }}, y "
+        "{{ empresa_cliente }}, representada por {{ nombre_cliente }}. Ambas "
         "empresas se denominan conjuntamente las Partes, y cada una queda obligada en los "
         "términos de este acuerdo."
     )
@@ -132,9 +133,8 @@ def construir():
     )
     cuerpo(
         "El objeto de este acuerdo es proteger la información confidencial que las Partes se "
-        "compartan con motivo de {{ objeto }}. El acuerdo es recíproco: cada Parte actúa como "
-        "Parte Reveladora respecto de la información que comparte, y como Parte Receptora "
-        "respecto de la que recibe de la otra."
+        "compartan con motivo de {{ objeto }}. El acuerdo es recíproco: cada Parte comparte "
+        "información propia y recibe la de la otra."
     )
 
     encabezado(2, "QUÉ SE CONSIDERA INFORMACIÓN CONFIDENCIAL")
@@ -160,7 +160,7 @@ def construir():
     vinetas([
         "Guardarla con estricta reserva",
         "No revelarla a terceros sin autorización previa y por escrito de la Parte que la "
-        "compartió, salvo a las personas a que se refiere la última viñeta de esta cláusula",
+        "compartió, salvo a las personas autorizadas conforme a esta misma cláusula",
         "Usarla únicamente para el fin descrito en la cláusula primera",
         "Protegerla con el mismo cuidado con que protege la propia, y nunca con menos "
         "del que resulta razonable",
@@ -191,6 +191,10 @@ def construir():
         "La Parte que la recibió desarrolló por su cuenta sin usar la información confidencial",
     ])
     cuerpo(
+        "Lo previsto en esta cláusula no limita lo dispuesto en la cláusula cuarta ni las "
+        "obligaciones que la ley de la materia imponga respecto de datos personales."
+    )
+    cuerpo(
         "La Parte que deba revelar información confidencial por mandato de autoridad competente "
         "lo hará solo en la medida requerida, avisando a la otra Parte con la anticipación que "
         "le sea posible. Para cualquier otro fin, esa información sigue siendo confidencial."
@@ -198,13 +202,15 @@ def construir():
 
     encabezado(6, "VIGENCIA DEL ACUERDO Y DE LA CONFIDENCIALIDAD")
     cuerpo(
-        "Este acuerdo entra en vigor el {{ fecha_efectiva }} y permanece vigente hasta que "
+        "Este acuerdo entra en vigor en la fecha en que lo firme la última de las Partes y "
+        "permanece vigente hasta que "
         "cualquiera de las Partes lo dé por terminado, avisando a la otra por escrito con "
         "treinta días naturales de anticipación."
     )
     cuerpo(
         "Las obligaciones de confidencialidad subsisten por un plazo de {{ vigencia }}, "
-        "contado a partir de la terminación de este acuerdo, y alcanzan a toda la información "
+        "contado a partir de la fecha en que surta efectos la terminación de este acuerdo, y "
+        "alcanzan a toda la información "
         "compartida durante su vigencia. Tratándose de información que constituya secreto "
         "industrial, subsisten mientras conserve ese carácter conforme a la ley, y tratándose "
         "de datos personales, subsisten conforme a la ley de la materia."
