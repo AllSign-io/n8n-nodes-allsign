@@ -71,11 +71,12 @@ def construir():
     run.font.size = Pt(12)
     run.font.color.rgb = GRIS
 
-    datos = doc.add_table(rows=4, cols=2)
+    datos = doc.add_table(rows=5, cols=2)
     datos.style = "Table Grid"
     filas = [
         ("Fecha del documento", "{{ fecha_efectiva }}"),
         ("Empresa", "{{ empresa_emisora }}"),
+        ("Representante de la empresa", "{{ representante_emisor }}"),
         ("Representante del cliente", "{{ nombre_cliente }}"),
         ("Empresa del cliente", "{{ empresa_cliente }}"),
     ]
@@ -177,7 +178,7 @@ def construir():
         "Cuando la información confidencial incluya datos personales, la Parte que los "
         "reciba los tratará conforme a la Ley Federal de Protección de Datos Personales en "
         "Posesión de los Particulares vigente y su normativa aplicable, los usará solo para "
-        "el fin de este acuerdo, y los suprimirá o devolverá cuando deje de ser necesario "
+        "el Fin, y los suprimirá o devolverá cuando deje de ser necesario "
         "conservarlos. Esta obligación aplica a cada Parte respecto de los datos personales "
         "que reciba de la otra."
     )
@@ -211,7 +212,9 @@ def construir():
     )
     cuerpo(
         "Los avisos previstos en este acuerdo se darán por escrito, incluso por correo "
-        "electrónico, a la dirección que cada Parte haya usado para firmarlo."
+        "electrónico, a la dirección que cada Parte haya usado para firmarlo o a la que "
+        "después designe por escrito. El aviso surte efectos cuando la otra Parte lo recibe, "
+        "y la terminación a los treinta días naturales siguientes."
     )
     cuerpo(
         "Las obligaciones de confidencialidad subsisten por un plazo de {{ vigencia }}, "
@@ -284,9 +287,9 @@ def construir():
     # de la tabla de partes.
     for columna, (quien, quien_detalle) in enumerate([
         ("{{ empresa_emisora }}",
-         "Por conducto de {{ representante_emisor }}\nFirma por la empresa"),
+         "Por conducto de {{ representante_emisor }}\nFirma de la Parte emisora"),
         ("{{ empresa_cliente }}",
-         "Por conducto de {{ nombre_cliente }}  ·  {{ correo_cliente }}\nFirma por el cliente"),
+         "Por conducto de {{ nombre_cliente }}  ·  {{ correo_cliente }}\nFirma de la Parte cliente"),
     ]):
         celda = firmas.cell(0, columna)
         celda.paragraphs[0].add_run("\n\n\n_______________________________")
