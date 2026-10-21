@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Genera el workflow "HubSpot Closed Won → AllSign contract" para n8n.
+"""Genera el workflow "HubSpot Contrato enviado → AllSign contract" para n8n.
 
 Uso:  python3 build_hubspot_template.py [--local] > salida.json
   --local  toma las credenciales y la plantilla de tu entorno, para probar:
@@ -32,6 +32,11 @@ TEMPLATE_ID = _del_entorno("ALLSIGN_TEMPLATE_ID", "tmpl_REPLACE_ME")
 # estrena las suyas.
 def wh(nombre):
     return str(uuid.uuid5(uuid.NAMESPACE_URL, nombre + ("-realtime" if WEBHOOK else "")))
+
+
+ETAPA = "contractsent"
+ENTRO_A_LA_ETAPA = "hs_v2_date_entered_" + ETAPA
+REINTENTOS = {"retryOnFail": True, "maxTries": 5, "waitBetweenTries": 5000}
 
 HS = "https://api.hubapi.com"
 
@@ -134,23 +139,25 @@ def note_body(deal_id_expr, body_expr, attachments_expr=None):
     })
 
 
-# ───────────────────────── FLOW 1 — Closed Won → send contract ─────────────────────────
+# ───────────────────────── FLOW 1 — Contrato enviado → send contract ─────────────────────────
 Y1 = 300
 sticky(
     "# 1 · El negocio avanza → sale el contrato\n\n" + (
         "HubSpot avisa en el momento en que un negocio pasa a **Contrato enviado**. El flujo "
         "lee el negocio, descarta los que ya tienen contrato, arma el documento con tu "
         "plantilla de AllSign y se lo manda al contacto. Mover el negocio a esa etapa es "
-        "justo lo que el vendedor ya hace cuando manda un contrato.\n\n"
+        "justo lo que el vendedor ya hace cuando manda un contrato."
         if WEBHOOK else
         "Cada 5 minutos el flujo le pregunta a HubSpot por los negocios en **Contrato "
         "enviado** que todavía no tienen contrato de AllSign, arma el documento con tu "
         "plantilla y se lo manda al contacto. Mover el negocio a esa etapa es justo lo que "
-        "el vendedor ya hace cuando manda un contrato.\n\n") +
-    "La invitación va por **WhatsApp** cuando el teléfono del contacto se puede completar "
-    "con la lada de su país, y por **correo** cuando no: mandar medio número no le llega a "
-    "nadie. El negocio guarda el id y el estado del contrato "
-    "(`allsign_document_id`, `allsign_contract_status`) para no mandarlo dos veces.",
+        "el vendedor ya hace cuando manda un contrato.") +
+    " Los negocios que ya estaban en esa etapa cuando publicaste el flujo no reciben "
+    "contrato: solo los que entran después.\n\n"
+    "La invitación va por **correo**. Si tu equipo prefiere **WhatsApp**, cámbialo en "
+    "*Prepare contract data* (la nota de instalación dice cómo). El negocio guarda el id y "
+    "el estado del contrato (`allsign_document_id`, `allsign_contract_status`) para no "
+    "mandarlo dos veces.",
     -80, Y1 - 420, 620, 340, color=4)
 
 def _cond(cid, left, right, operation="equals", type_="string", **extra):
@@ -304,10 +311,10 @@ if WEBHOOK:
     s1 = hs_http("The deal that just moved", "GET",
                  "=" + HS + "/crm/v3/objects/deals/{{ $json.objectId }}"
                  "?properties=dealname,amount,closedate,allsign_document_id,"
-                 "allsign_contract_status,dealstage", 480, Y1)
+                 "allsign_contract_status,dealstage," + ENTRO_A_LA_ETAPA, 480, Y1)
 
     fresh = _filter("Really in Contract Sent, with no contract?", [
-        _cond("etapa", "={{ $json.properties.dealstage }}", "contractsent"),
+        _cond("etapa", "={{ $json.properties.dealstage }}", ETAPA),
         _cond("nodoc", "={{ $json.properties.allsign_document_id }}", "",
               operation="empty", singleValue=True),
         _cond("noestado", "={{ $json.properties.allsign_contract_status }}", "",
@@ -322,17 +329,26 @@ if WEBHOOK:
     ENTRY = fresh  # el nodo que le pasa el deal al resto del flujo
 else:
     t1 = node("Every 5 minutes", "n8n-nodes-base.scheduleTrigger", 1.2,
-              {"rule": {"interval": [{"field": "minutes", "minutesInterval": 5}]}}, 0, Y1)
+              {"rule": {"interval": [{"field": "minutes", "minutesInterval": 5}]}}, -240, Y1)
+
+    desde = node("Only deals that move from now on", "n8n-nodes-base.code", 2, {
+        "jsCode": (
+            "const marca = $getWorkflowStaticData('global');\n"
+            "if (!marca.desde) marca.desde = Date.now() - 5 * 60 * 1000;\n"
+            "return [{ json: { desde: marca.desde } }];"
+        ),
+    }, 0, Y1)
 
     s1 = hs_search("Deals ready for their contract", [
-        {"propertyName": "dealstage", "operator": "EQ", "value": "contractsent"},
+        {"propertyName": "dealstage", "operator": "EQ", "value": ETAPA},
+        {"propertyName": ENTRO_A_LA_ETAPA, "operator": "GTE", "value": "={{ $json.desde }}"},
         {"propertyName": "allsign_document_id", "operator": "NOT_HAS_PROPERTY"},
         # Un negocio marcado como `error` no se reintenta solo cada cinco minutos.
         # Para reintentarlo, una persona borra el estado y el id a mano.
         {"propertyName": "allsign_contract_status", "operator": "NOT_HAS_PROPERTY"},
-    ], ["dealname", "amount", "closedate", "allsign_document_id"], 240, Y1)
+    ], ["dealname", "amount", "closedate", "allsign_document_id", ENTRO_A_LA_ETAPA], 240, Y1)
 
-    START_CHAIN = [(t1, s1)]
+    START_CHAIN = [(t1, desde), (desde, s1)]
     ENTRY = s1
 
 DEAL = s1  # el nodo que trae el deal, se llama distinto en cada variante
@@ -373,12 +389,14 @@ prep = node("Prepare contract data", "n8n-nodes-base.set", 3.4, {
                   "  const raw = ($json.properties.mobilephone || $json.properties.phone || '').trim();\n"
                   "  if (!raw) return '';\n"
                   "  if (raw.startsWith('+')) return '+' + raw.slice(1).replace(/\\D/g, '');\n"
-                  "  const dial = { Mexico: '52', 'M\u00e9xico': '52', 'United States': '1', Canada: '1',\n"
-                  "                 Spain: '34', 'Espa\u00f1a': '34', Colombia: '57', Argentina: '54',\n"
-                  "                 Chile: '56', Peru: '51', 'Per\u00fa': '51', Brazil: '55' };\n"
-                  "  const code = dial[($json.properties.country || '').trim()];\n"
-                  "  const digits = raw.replace(/\\D/g, '');\n"
-                  "  return code ? '+' + code + digits : '';\n"
+                  "  const dial = { Mexico: ['52', 10], 'M\u00e9xico': ['52', 10], 'United States': ['1', 10],\n"
+                  "                 Canada: ['1', 10], Spain: ['34', 9], 'Espa\u00f1a': ['34', 9],\n"
+                  "                 Colombia: ['57', 10], Argentina: ['54', 10], Chile: ['56', 9],\n"
+                  "                 Peru: ['51', 9], 'Per\u00fa': ['51', 9], Brazil: ['55', 11] };\n"
+                  "  const [code, national] = dial[($json.properties.country || '').trim()] || [];\n"
+                  "  if (!code) return '';\n"
+                  "  const digits = raw.replace(/\\D/g, '').replace(/^00/, '');\n"
+                  "  return digits.length > national && digits.startsWith(code) ? '+' + digits : '+' + code + digits;\n"
                   "})() }}"},
         {"id": "a7", "name": "company", "type": "string", "value": "={{ $json.properties.company || '' }}"},
         {"id": "a8", "name": "channel", "type": "string",
@@ -412,7 +430,12 @@ prep = node("Prepare contract data", "n8n-nodes-base.set", 3.4, {
         # 2027 - 2a llamada". En el contrato queda "con motivo de …", así que va
         # una frase legible.
         {"id": "a15", "name": "objeto", "type": "string",
-         "value": "la evaluación de una posible relación comercial"},    ]},
+         "value": "la evaluación de una posible relación comercial"},
+        {"id": "a16", "name": "fecha_efectiva", "type": "string",
+         "value": "={{ $('" + DEAL + "').item.json.properties." + ENTRO_A_LA_ETAPA + " ? "
+                  "DateTime.fromISO($('" + DEAL + "').item.json.properties." + ENTRO_A_LA_ETAPA + ")"
+                  ".setZone($now.zone).toFormat('dd/MM/yyyy') : '' }}"},
+    ]},
     "options": {},
 }, X1 + 720, Y1)
 
@@ -432,14 +455,24 @@ sw = node("WhatsApp or email?", "n8n-nodes-base.switch", 3.2, {
     "options": {},
 }, X1 + 960, Y1)
 
+con_correo = node("Contact has an email?", "n8n-nodes-base.if", 2.2, {
+    "conditions": {
+        "options": {"caseSensitive": True, "leftValue": "", "typeValidation": "strict", "version": 2},
+        "conditions": [{"id": "correo", "leftValue": "={{ $json.email }}", "rightValue": "",
+                        "operator": {"type": "string", "operation": "notEmpty", "singleValue": True}}],
+        "combinator": "and",
+    },
+    "options": {},
+}, X1 + 1200, Y1)
+
 create = allsign("Create contract in AllSign", {
     "operation": "createDocument",
     "documentName": "=Contract — {{ $json.dealName }}",
     "source": "template",
     "templateId": "={{ $json.templateId }}",
     "templateValues": "={{ JSON.stringify({ nombre_cliente: $json.contactName, "
-                      "empresa_cliente: $json.company || $json.dealName, correo_cliente: $json.email, "
-                      "objeto: $json.objeto, fecha_efectiva: $today.toFormat('dd/MM/yyyy'), "
+                      "empresa_cliente: $json.company || $json.contactName, correo_cliente: $json.email, "
+                      "objeto: $json.objeto, fecha_efectiva: $json.fecha_efectiva, "
                       "empresa_emisora: $json.empresa_emisora, representante_emisor: $json.emisor_nombre, "
                       "correo_emisor: $json.emisor_correo, "
                       "vigencia: $json.vigencia, "
@@ -463,14 +496,14 @@ create = allsign("Create contract in AllSign", {
         },
     ]},    "signatureValidations": {"verifyAutografa": True, "verifyNom151": True},
     "configuration": {"idempotencyKey": clave("allsign-hubspot-create", "$json.dealId")},
-}, X1 + 1440, Y1, onError="continueErrorOutput")
+}, X1 + 1440, Y1, onError="continueErrorOutput", **REINTENTOS)
 
 # Guardar el id ANTES de enviar. Si el envío falla y el id no estaba guardado,
 # el ciclo siguiente no encuentra el contrato, crea otro y cobra otra vez.
 save_created = hs_update("Save contract ID on the deal", "={{ $('Prepare contract data').item.json.dealId }}", [
     ("allsign_document_id", "={{ $('Create contract in AllSign').item.json.id }}"),
     ("allsign_contract_status", "created"),
-], X1 + 1680, Y1, onError="continueErrorOutput")
+], X1 + 1680, Y1, onError="continueErrorOutput", **REINTENTOS)
 
 send = allsign("Send for signature", {
     "operation": "sendDocument",
@@ -478,7 +511,7 @@ send = allsign("Send for signature", {
     # del nodo que lo creó.
     "documentId": "={{ $('Create contract in AllSign').item.json.id }}",
     "idempotencyKey": clave("allsign-hubspot-send", "$('Create contract in AllSign').item.json.id"),
-}, X1 + 1920, Y1, onError="continueErrorOutput")
+}, X1 + 1920, Y1, onError="continueErrorOutput", **REINTENTOS)
 
 save_sent = hs_update("Mark contract as sent", "={{ $('Prepare contract data').item.json.dealId }}", [
     ("allsign_contract_status", "sent"),
@@ -487,7 +520,8 @@ save_sent = hs_update("Mark contract as sent", "={{ $('Prepare contract data').i
 note1 = hs_http("Log 'contract sent' on the deal", "POST", HS + "/crm/v3/objects/notes", X1 + 2400, Y1,
                 body=note_body("{{ $('Prepare contract data').item.json.dealId }}",
                                "Contract sent for signature via AllSign ({{ $('Create contract in AllSign').item.json.id }}) "
-                               "by {{ $('Prepare contract data').item.json.channel }} to {{ $('Prepare contract data').item.json.contactName }}."))
+                               "by {{ $('Prepare contract data').item.json.channel }} to "
+                               "{{ JSON.stringify($('Prepare contract data').item.json.contactName).slice(1, -1) }}."))
 
 # Todo lo que puede fallar termina aquí, y el negocio queda marcado. Así nadie se
 # queda esperando un contrato que nunca salió, y el reloj no lo reintenta solo.
@@ -495,9 +529,15 @@ failed = hs_update("Mark deal as failed", "={{ $('" + DEAL + "').item.json.id }}
     ("allsign_contract_status", "error"),
 ], X1 + 1680, Y1 + 260)
 
+alto = node("Stop: no contract went out", "n8n-nodes-base.stopAndError", 1, {
+    "errorMessage": "=No contract went out for the deal \"{{ $('" + DEAL + "').item.json.properties.dealname }}\" "
+                    "({{ $('" + DEAL + "').item.json.id }}). It is marked as error in HubSpot.",
+}, X1 + 1920, Y1 + 260)
+
 for a, b in START_CHAIN + [(ENTRY, c1), (c1, if1), (c2, prep), (prep, sw),
                            (create, save_created), (save_created, send),
-                           (send, save_sent), (save_sent, note1)]:    link(a, b)
+                           (send, save_sent), (save_sent, note1), (failed, alto)]:
+    link(a, b)
 link(if1, c2, 0)
 if WEBHOOK:
     # La salida 0 del IF es la firma buena: contesta 200 y sigue. La 1 es la
@@ -506,8 +546,10 @@ if WEBHOOK:
     link(esv3, hash1, 1)   # solo trae la v1, que es la de las apps privadas
     link(es_valida, ok200, 0)
     link(es_valida, no401, 1)
-link(sw, create, 0)
-link(sw, create, 1)
+link(sw, con_correo, 0)
+link(sw, con_correo, 1)
+link(con_correo, create, 0)
+link(con_correo, failed, 1)
 # Las salidas de error: sin contacto, y las tres operaciones que pueden tronar.
 link(if1, failed, 1)
 link(create, failed, 1)
@@ -569,6 +611,7 @@ files = node("List files to attach", "n8n-nodes-base.code", 2, {
         "const out = [];\n"
         "if (ev.evidencePdf?.url) out.push({ json: { fileName: `${docId}-signed.pdf`, url: ev.evidencePdf.url, kind: 'Signed PDF' } });\n"
         "if (ev.nom151?.url) out.push({ json: { fileName: `${docId}-nom151.pdf`, url: ev.nom151.url, kind: 'NOM-151 certificate' } });\n"
+        "if (!out.length) throw new Error(`The evidence for ${docId} was still not ready after 15 minutes`);\n"
         "return out;"
     ),
 }, 960, Y2)
@@ -622,20 +665,23 @@ notify = node("Tell the team", "n8n-nodes-base.emailSend", 2.1, {
     "subject": "=Signed: {{ $('Deal for this contract').first().json.properties.dealname }}",
     "emailFormat": "html",
     "html": "=The contract for <b>{{ $('Deal for this contract').first().json.properties.dealname }}</b> "
-            "is signed by all parties.<br><br>The signed PDF and the NOM-151 certificate are attached "
-            "to the deal in HubSpot.",
+            "is signed by all parties.<br><br>Attached to the deal in HubSpot: "
+            "{{ $('List files to attach').all().map(f => f.json.kind).join(', ') }}.",
     "options": {},
 }, 2640, Y2, cred={"smtp": SMTP_CRED})
 
 # ── Error branch: one place to notice a run that broke ──────────────────
 sticky(
     "# Si algo truena\n\n"
-    "El **Error Trigger** se dispara cuando cualquier corrida del flujo falla: una "
-    "credencial mala, AllSign caído, HubSpot que corta por exceso de llamadas. Sin él, un "
-    "contrato que no salió pasa desapercibido y el negocio se queda como si estuviera "
-    "enviado.\n\n"
-    "Mándalo a donde de verdad lo veas: si prefieres tu chat, cambia el nodo de correo por "
-    "el de tu herramienta.",
+    "El **Error Trigger** avisa cuando una corrida termina en error: una credencial mala, "
+    "AllSign caído, HubSpot que corta por exceso de llamadas. Cuando un contrato no sale "
+    "(el negocio no tiene contacto, el contacto no tiene correo, o AllSign o HubSpot "
+    "siguen fallando después de cinco intentos), el negocio queda marcado `error` y la "
+    "corrida termina en error a propósito para que el aviso salga. Lo mismo si la "
+    "evidencia de un contrato firmado no llega en 15 minutos.\n\n"
+    "Solo avisa de las corridas del flujo publicado, no de las que lanzas a mano desde el "
+    "editor. Mándalo a donde de verdad lo veas: si prefieres tu chat, cambia el nodo de "
+    "correo por el de tu herramienta.",
     -80, Y2 + 520, 560, 260, color=3)
 
 err = node("Something failed", "n8n-nodes-base.errorTrigger", 1, {}, 0, Y2 + 900)
@@ -645,7 +691,8 @@ err_msg = node("Report the failure", "n8n-nodes-base.emailSend", 2.1, {
     "subject": "AllSign contract workflow failed",
     "emailFormat": "html",
     "html": "=The run failed at <b>{{ $json.execution.lastNodeExecuted }}</b>.<br><br>"
-            "{{ $json.execution.error.message }}",
+            "{{ $json.execution.error.message }}<br><br>"
+            "<a href=\"{{ $json.execution.url }}\">Open the run</a> to see what happened.",
     "options": {},
 }, 240, Y2 + 900, cred={"smtp": SMTP_CRED})
 link(err, err_msg)
@@ -659,7 +706,8 @@ link(ready, wait_ev, 1)
 Y3 = 2600
 sticky(
     "# 3 · Recordatorio diario a quien falta por firmar\n\n"
-    "Cada mañana el flujo toma los negocios cuyo contrato sigue en **enviado**, le pregunta "
+    "De lunes a viernes a las 9:00, hora de la Ciudad de México (la zona se cambia en la "
+    "configuración del flujo), el flujo toma los negocios cuyo contrato sigue en **enviado**, le pregunta "
     "a AllSign quién falta y le manda un recordatorio a cada uno, por el mismo medio que la "
     "invitación.\n\n"
     "AllSign permite un recordatorio por firmante cada 4 horas y 10 llamadas por minuto: por "
@@ -726,7 +774,8 @@ sticky(
     "3. En HubSpot agrega dos **propiedades de negocio**: `allsign_document_id` (texto de "
     "una línea) y `allsign_contract_status` (desplegable con `created`, `sent`, `signed` "
     "y `error`). Un negocio marcado `error` no se reintenta solo: para reintentarlo, borra "
-    "esas dos propiedades a mano.\n"
+    "esas dos propiedades a mano. Antes de hacerlo, busca el contrato en AllSign: si ya "
+    "existe, no lo reintentes, porque saldría otro y se cobraría dos veces.\n"
     "4. Sube tu contrato como **plantilla** en AllSign y pega su id `tmpl_…` en *Prepare "
     "contract data*. En ese mismo nodo, más abajo, están las que salen de ti y no del "
     "CRM: **empresa_emisora**, **emisor_nombre**, **emisor_correo**, **vigencia**, "
@@ -754,7 +803,8 @@ sticky(
     "6. Los dos nodos de correo traen direcciones de ejemplo (`sales@example.com`) que "
     "rebotan. Conecta tu servidor de correo y pon tu remitente y tu destinatario, o "
     "bórralos.\n"
-    "7. Publica el flujo. Mueve un negocio a **Contrato enviado** y velo salir.\n\n" +
+    "7. Publica el flujo. Mueve un negocio a **Contrato enviado** y velo salir. Los que ya "
+    "estaban en esa etapa al publicarlo no reciben contrato.\n\n" +
     ("8. Abre el nodo *HubSpot calls when a deal changes* y **cambia la ruta** por algo "
      "tuyo. Viene con un texto de relleno a propósito: si la dejas, cualquiera que lea "
      "este repo puede adivinar tu dirección.\n"
@@ -781,20 +831,30 @@ sticky(
     "donde se cumple el acuerdo: si pones una ciudad sin relación con ninguna, la "
     "sumisión a esos tribunales puede no valer.\n\n"
     "**¿Otro embudo?** Las etapas `contractsent` y `closedwon` son las del embudo que "
-    "HubSpot trae de fábrica. Si usas uno propio, cambia la etapa en dos nodos: la que "
-    "busca los negocios al principio, y *Move the deal to Closed Won* al final. El "
-    "identificador de tu etapa sale de HubSpot, en la configuración del embudo.\n\n"    "**¿Correo o WhatsApp?** Lo eliges tú: abre *Prepare contract data*, campo `channel`, "
-    "y en la primera línea cambia `prefiere` de `email` a `whatsapp`. Para WhatsApp el "
-    "teléfono tiene que poder completarse con la lada del país que traiga el contacto en "
-    "HubSpot; si no se puede, ese contrato se va por correo en lugar de fallar.",
+    "HubSpot trae de fábrica. Si usas uno propio, cambia `contractsent` por el "
+    "identificador de tu etapa en " + (
+        "*The deal that just moved* (en `" + ENTRO_A_LA_ETAPA + "`, entre las propiedades "
+        "que lee), en *Really in Contract Sent, with no contract?*"
+        if WEBHOOK else
+        "*Deals ready for their contract* (en el filtro de la etapa, en `" + ENTRO_A_LA_ETAPA +
+        "` y en las propiedades que lee)") +
+    " y en el campo `fecha_efectiva` de *Prepare contract data*; y `closedwon` en *Move the "
+    "deal to Closed Won*. El identificador de tu etapa sale de HubSpot, en la configuración "
+    "del embudo.\n\n"
+    "**¿Correo o WhatsApp?** Sale por correo. Para mandarlo por WhatsApp abre *Prepare "
+    "contract data*, campo `channel`, y en la primera línea cambia `prefiere` de `email` a "
+    "`whatsapp`. Para WhatsApp el teléfono tiene que traer la lada (`+52…`) o poder "
+    "completarse con la del país que traiga el contacto en HubSpot; si no se puede, ese "
+    "contrato se va por correo en lugar de fallar. El correo del contacto hace falta "
+    "siempre: el contrato lo lleva escrito.",
     620, Y1 - 560, 780, 520, color=6)
 
 workflow = {
-    "name": "Close HubSpot deals with NOM-151 compliant e-signature and WhatsApp delivery"
+    "name": "Close HubSpot deals with NOM-151 compliant e-signature, by email or WhatsApp"
             + (" — real time" if WEBHOOK else ""),
     "nodes": nodes,
     "connections": connections,
-    "settings": {"executionOrder": "v1"},
+    "settings": {"executionOrder": "v1", "timezone": "America/Mexico_City"},
     "meta": {"templateCredsSetupCompleted": False},
 }
 print(json.dumps(workflow, indent=2, ensure_ascii=False))
