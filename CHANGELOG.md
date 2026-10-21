@@ -6,7 +6,7 @@ All notable changes to `n8n-nodes-allsign` will be documented in this file.
 
 ### 🐛 Fixed
 
-- **Los enlaces a la documentación ya no llevan a un dominio muerto.** `docs.allsign.io` no resuelve en DNS, y era lo primero que veía quien acababa de instalar el nodo: la descripción de la credencial y el catálogo apuntaban ahí. Ahora van a `allsign.io/developers/docs`. Un test comprueba que la credencial, el catálogo y el workflow de ejemplo solo apunten a `allsign.io` o `api.allsign.io`, y un paso de CI cubre lo que el test no puede leer, como el README.
+- **Documentation links no longer lead to a dead domain.** `docs.allsign.io` doesn't resolve, and it was the first thing someone who had just installed the node ran into: the credential description and the node catalog pointed there. They now go to `allsign.io/developers/docs`. A test checks that the credential, the catalog and the example workflow only point to `allsign.io` or `api.allsign.io`, and a CI step covers what the test can't read, such as the README.
 
 ## [0.6.0] — 2026-08-26
 
