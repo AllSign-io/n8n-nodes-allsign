@@ -1,0 +1,2154 @@
+{
+  "name": "Close HubSpot deals with NOM-151 compliant e-signature, by email or WhatsApp — real time",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "# 1 · El negocio avanza → sale el contrato\n\nHubSpot avisa en el momento en que un negocio pasa a **Contrato enviado**. El flujo lee el negocio, descarta los que ya tienen contrato, arma el documento con tu plantilla de AllSign y se lo manda al contacto. Mover el negocio a esa etapa es justo lo que el vendedor ya hace cuando manda un contrato. Los negocios que ya estaban en esa etapa cuando publicaste el flujo no reciben contrato: solo los que entran después.\n\nLa invitación va por **correo**. Si tu equipo prefiere **WhatsApp**, cámbialo en *Prepare contract data* (la nota de instalación dice cómo). El negocio guarda el id y el estado del contrato (`allsign_document_id`, `allsign_contract_status`) para no mandarlo dos veces.",
+        "width": 620,
+        "height": 340,
+        "color": 4
+      },
+      "id": "67a0b71a-2bd2-54fe-a0ff-6aa32449d476",
+      "name": "Note 0",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cambia-esto-por-algo-tuyo",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "34ae73bd-a34e-598d-bd80-9cdf8a063e10",
+      "name": "HubSpot calls when a deal changes",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1920,
+        300
+      ],
+      "webhookId": "c98fddf6-38b7-55de-9696-4cf3cddd365b"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "binaryPropertyName": "data",
+        "destinationKey": "cuerpo",
+        "options": {}
+      },
+      "id": "0f198035-ca26-529e-b9e4-17084eef04bf",
+      "name": "The body, byte for byte",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -1680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b1",
+              "name": "secreto",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "b2",
+              "name": "miUrl",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "b3",
+              "name": "firmaV1",
+              "type": "string",
+              "value": "={{ $('HubSpot calls when a deal changes').item.json.headers['x-hubspot-signature'] ?? '' }}"
+            },
+            {
+              "id": "b4",
+              "name": "firmaV3",
+              "type": "string",
+              "value": "={{ $('HubSpot calls when a deal changes').item.json.headers['x-hubspot-signature-v3'] ?? '' }}"
+            },
+            {
+              "id": "b5",
+              "name": "marca",
+              "type": "string",
+              "value": "={{ $('HubSpot calls when a deal changes').item.json.headers['x-hubspot-request-timestamp'] ?? '' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0397c89a-b8ff-5b9e-9470-cf72c9670eb2",
+      "name": "Signature inputs",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "v3",
+              "leftValue": "={{ $json.firmaV3 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9047e18e-b443-5159-8375-a666bc553be9",
+      "name": "Which signature version?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ 'POST' + $json.miUrl + $json.cuerpo + $json.marca }}",
+        "dataPropertyName": "calculada",
+        "secret": "={{ $json.secreto }}",
+        "encoding": "base64"
+      },
+      "id": "dd9ffc5d-dbeb-5b0f-9c7c-b0b1e96cb6bb",
+      "name": "Sign it the v3 way",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        -960,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "action": "hash",
+        "type": "SHA256",
+        "value": "={{ $json.secreto + $json.cuerpo }}",
+        "dataPropertyName": "calculada",
+        "encoding": "hex"
+      },
+      "id": "0aeb7b89-f32d-5eb2-8218-4f79cda7271a",
+      "name": "Sign it the v1 way",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        -960,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "hay",
+              "leftValue": "={{ $json.secreto }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "fresca",
+              "leftValue": "={{ !$json.firmaV3 || Math.abs(Date.now() - Number($json.marca)) <= 300000 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "cuadra",
+              "leftValue": "={{ (() => {\n  const a = $json.calculada || '';\n  const b = $json.firmaV3 || $json.firmaV1 || '';\n  let diff = a.length ^ b.length;\n  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i % (b.length || 1));\n  return diff === 0;\n})() }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5ff62201-4367-5106-828d-f48debd8573f",
+      "name": "Signature checks out?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -720,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "noData",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "b0cc4733-062b-5d60-8bb3-99a0103597a9",
+      "name": "Thanks, got it",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "invalid signature",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "id": "a8709273-f620-586f-b94d-8073ea6eba3e",
+      "name": "Not HubSpot — refuse",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -480,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "eventos",
+        "options": {}
+      },
+      "id": "084298cf-f8fe-5dbf-a8c0-a03dad2380e3",
+      "name": "One item per event",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1",
+              "name": "eventos",
+              "type": "array",
+              "value": "={{ $('HubSpot calls when a deal changes').item.json.body }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1703f3f7-d2d6-5407-b4ee-4e041f2796f0",
+      "name": "The events, parsed",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "prop",
+              "leftValue": "={{ $json.propertyName }}",
+              "rightValue": "dealstage",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "33a73add-9050-51bb-be2e-fdb55bb268f2",
+      "name": "Moved to Contract Sent?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.hubapi.com/crm/v3/objects/deals/{{ $json.objectId }}?properties=dealname,amount,closedate,allsign_document_id,allsign_contract_status,dealstage,hs_v2_date_entered_contractsent",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "id": "1d75ba18-7c0c-575c-9383-3c6ef3a11018",
+      "name": "The deal that just moved",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "",
+          "name": "HubSpot App Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "etapa",
+              "leftValue": "={{ $json.properties.dealstage }}",
+              "rightValue": "contractsent",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "nodoc",
+              "leftValue": "={{ $json.properties.allsign_document_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "noestado",
+              "leftValue": "={{ $json.properties.allsign_contract_status }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6d1aa4a6-6b8b-5a40-a32b-1b35e6d5bdc2",
+      "name": "Really in Contract Sent, with no contract?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.hubapi.com/crm/v4/objects/deals/{{ $json.id }}/associations/contacts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "id": "0a5b2be6-1fea-57f8-8515-6c6a52de4fb6",
+      "name": "Contact linked to the deal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        300
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "",
+          "name": "HubSpot App Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "has-contact",
+              "leftValue": "={{ $json.results.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "7a4e9faa-890d-5ba7-9fd3-5f3d9d228c5a",
+      "name": "Deal has a contact?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.hubapi.com/crm/v3/objects/contacts/{{ $json.results[0].toObjectId }}?properties=firstname,lastname,email,phone,mobilephone,company,country",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "id": "778ff634-6d0d-5990-965c-52702eea46ae",
+      "name": "Contact details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        300
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "",
+          "name": "HubSpot App Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "dealId",
+              "type": "string",
+              "value": "={{ $('The deal that just moved').item.json.id }}"
+            },
+            {
+              "id": "a2",
+              "name": "dealName",
+              "type": "string",
+              "value": "={{ $('The deal that just moved').item.json.properties.dealname }}"
+            },
+            {
+              "id": "a3",
+              "name": "amount",
+              "type": "string",
+              "value": "={{ $('The deal that just moved').item.json.properties.amount || '' }}"
+            },
+            {
+              "id": "a4",
+              "name": "contactName",
+              "type": "string",
+              "value": "={{ [$json.properties.firstname, $json.properties.lastname].filter(Boolean).join(' ') }}"
+            },
+            {
+              "id": "a5",
+              "name": "email",
+              "type": "string",
+              "value": "={{ $json.properties.email || '' }}"
+            },
+            {
+              "id": "a6",
+              "name": "phone",
+              "type": "string",
+              "value": "={{ (() => {\n  const raw = ($json.properties.mobilephone || $json.properties.phone || '').trim();\n  if (!raw) return '';\n  if (raw.startsWith('+')) return '+' + raw.slice(1).replace(/\\D/g, '');\n  const dial = { Mexico: ['52', 10], 'México': ['52', 10], 'United States': ['1', 10],\n                 Canada: ['1', 10], Spain: ['34', 9], 'España': ['34', 9],\n                 Colombia: ['57', 10], Argentina: ['54', 10], Chile: ['56', 9],\n                 Peru: ['51', 9], 'Perú': ['51', 9], Brazil: ['55', 11] };\n  const [code, national] = dial[($json.properties.country || '').trim()] || [];\n  if (!code) return '';\n  const digits = raw.replace(/\\D/g, '').replace(/^00/, '');\n  return digits.length > national && digits.startsWith(code) ? '+' + digits : '+' + code + digits;\n})() }}"
+            },
+            {
+              "id": "a7",
+              "name": "company",
+              "type": "string",
+              "value": "={{ $json.properties.company || '' }}"
+            },
+            {
+              "id": "a8",
+              "name": "channel",
+              "type": "string",
+              "value": "={{ (() => {\n  const prefiere = 'email';   // cambia a 'whatsapp' si tu equipo manda por ahi\n  const raw = ($json.properties.mobilephone || $json.properties.phone || '').trim();\n  if (!raw) return 'email';\n  const known = ['Mexico','México','United States','Canada','Spain','España',\n                 'Colombia','Argentina','Chile','Peru','Perú','Brazil'];\n  const completo = raw.startsWith('+') || known.includes(($json.properties.country || '').trim());\n  return prefiere === 'whatsapp' && completo ? 'whatsapp' : 'email';\n})() }}"
+            },
+            {
+              "id": "a9",
+              "name": "templateId",
+              "type": "string",
+              "value": "tmpl_REPLACE_ME"
+            },
+            {
+              "id": "a10",
+              "name": "empresa_emisora",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "a11",
+              "name": "vigencia",
+              "type": "string",
+              "value": "dos años"
+            },
+            {
+              "id": "a12",
+              "name": "jurisdiccion",
+              "type": "string",
+              "value": "Ciudad de México"
+            },
+            {
+              "id": "a13",
+              "name": "emisor_nombre",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "a14",
+              "name": "emisor_correo",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "a15",
+              "name": "objeto",
+              "type": "string",
+              "value": "la evaluación de una posible relación comercial"
+            },
+            {
+              "id": "a16",
+              "name": "fecha_efectiva",
+              "type": "string",
+              "value": "={{ $('The deal that just moved').item.json.properties.hs_v2_date_entered_contractsent ? DateTime.fromISO($('The deal that just moved').item.json.properties.hs_v2_date_entered_contractsent).setZone($now.zone).toFormat('dd/MM/yyyy') : '' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1c3551c1-a1fe-5dd2-9d05-14e4bfbede2b",
+      "name": "Prepare contract data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "wa",
+                    "leftValue": "={{ $json.channel }}",
+                    "rightValue": "whatsapp",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "WhatsApp"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "em",
+                    "leftValue": "={{ $json.channel }}",
+                    "rightValue": "email",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Email"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "490d8182-87b9-59a4-ab3c-b5fbeb4e3fbc",
+      "name": "WhatsApp or email?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1920,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "correo",
+              "leftValue": "={{ $json.email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "15d5c27b-ec76-5873-85c6-9bb953302299",
+      "name": "Contact has an email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2160,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "document",
+        "operation": "createDocument",
+        "documentName": "=Contract — {{ $json.dealName }}",
+        "source": "template",
+        "templateId": "={{ $json.templateId }}",
+        "templateValues": "={{ JSON.stringify({ nombre_cliente: $json.contactName, empresa_cliente: $json.company || $json.contactName, correo_cliente: $json.email, objeto: $json.objeto, fecha_efectiva: $json.fecha_efectiva, empresa_emisora: $json.empresa_emisora, representante_emisor: $json.emisor_nombre, correo_emisor: $json.emisor_correo, vigencia: $json.vigencia, jurisdiccion: $json.jurisdiccion }) }}",
+        "signers": {
+          "signerValues": [
+            {
+              "name": "={{ $json.emisor_nombre }}",
+              "deliveryMethod": "email",
+              "email": "={{ $json.emisor_correo }}",
+              "roleName": "emisor"
+            },
+            {
+              "name": "={{ $json.contactName }}",
+              "deliveryMethod": "={{ $json.channel }}",
+              "email": "={{ $json.email }}",
+              "whatsapp": "={{ $json.phone }}",
+              "roleName": "cliente"
+            }
+          ]
+        },
+        "signatureValidations": {
+          "verifyAutografa": true,
+          "verifyNom151": true
+        },
+        "configuration": {
+          "idempotencyKey": "={{ ('allsign-hubspot-create-' + $json.dealId).hash('sha256').replace(/^(.{8})(.{4}).(.{3}).(.{3})(.{12}).*$/, '$1-$2-4$3-8$4-$5') }}"
+        }
+      },
+      "id": "5e87aecd-ea98-5aa8-a7b8-e9763977b3b5",
+      "name": "Create contract in AllSign",
+      "type": "n8n-nodes-allsign.allsign",
+      "typeVersion": 1,
+      "position": [
+        2400,
+        300
+      ],
+      "credentials": {
+        "allSignApi": {
+          "id": "",
+          "name": "AllSign API"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "resource": "deal",
+        "operation": "update",
+        "dealId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Prepare contract data').item.json.dealId }}"
+        },
+        "updateFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "allsign_document_id",
+                "value": "={{ $('Create contract in AllSign').item.json.id }}"
+              },
+              {
+                "property": "allsign_contract_status",
+                "value": "created"
+              }
+            ]
+          }
+        }
+      },
+      "id": "6eccccd4-077e-54fa-9110-37ac7ec395c7",
+      "name": "Save contract ID on the deal",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        2640,
+        300
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "",
+          "name": "HubSpot App Token"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "resource": "document",
+        "operation": "sendDocument",
+        "documentId": "={{ $('Create contract in AllSign').item.json.id }}",
+        "idempotencyKey": "={{ ('allsign-hubspot-send-' + $('Create contract in AllSign').item.json.id).hash('sha256').replace(/^(.{8})(.{4}).(.{3}).(.{3})(.{12}).*$/, '$1-$2-4$3-8$4-$5') }}"
+      },
+      "id": "c6796e2a-11cf-5da5-bc26-29985ddee821",
+      "name": "Send for signature",
+      "type": "n8n-nodes-allsign.allsign",
+      "typeVersion": 1,
+      "position": [
+        2880,
+        300
+      ],
+      "credentials": {
+        "allSignApi": {
+          "id": "",
+          "name": "AllSign API"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "resource": "deal",
+        "operation": "update",
+        "dealId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Prepare contract data').item.json.dealId }}"
+        },
+        "updateFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "allsign_contract_status",
+                "value": "sent"
+              }
+            ]
+          }
+        }
+      },
+      "id": "b56888e2-d72e-5f53-9e8c-b65267283c93",
+      "name": "Mark contract as sent",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        3120,
+        300
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "",
+          "name": "HubSpot App Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/notes",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"properties\": {\"hs_timestamp\": \"{{ $now.toISO() }}\", \"hs_note_body\": \"Contract sent for signature via AllSign ({{ $('Create contract in AllSign').item.json.id }}) by {{ $('Prepare contract data').item.json.channel }} to {{ JSON.stringify($('Prepare contract data').item.json.contactName).slice(1, -1) }}.\"}, \"associations\": [{\"to\": {\"id\": \"{{ $('Prepare contract data').item.json.dealId }}\"}, \"types\": [{\"associationCategory\": \"HUBSPOT_DEFINED\", \"associationTypeId\": 214}]}]}"
+      },
+      "id": "879e0bce-8cbc-5701-b0e2-67375105d5c2",
+      "name": "Log 'contract sent' on the deal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3360,
+        300
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "",
+          "name": "HubSpot App Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "resource": "deal",
+        "operation": "update",
+        "dealId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('The deal that just moved').item.json.id }}"
+        },
+        "updateFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "allsign_contract_status",
+                "value": "error"
+              }
+            ]
+          }
+        }
+      },
+      "id": "c6e726f3-5199-5249-ac09-4fbac8c590c8",
+      "name": "Mark deal as failed",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        2640,
+        560
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "",
+          "name": "HubSpot App Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "errorMessage": "=No contract went out for the deal \"{{ $('The deal that just moved').item.json.properties.dealname }}\" ({{ $('The deal that just moved').item.json.id }}). It is marked as error in HubSpot."
+      },
+      "id": "e6227ee0-0666-5296-a34f-82a6c53b2920",
+      "name": "Stop: no contract went out",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        2880,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "content": "# 2 · Ya firmaron → la evidencia llega al negocio\n\nEl **AllSign Trigger** registra un webhook en tu cuenta de AllSign y se dispara con `document.completed`. El flujo busca el negocio por el id del contrato, baja el PDF firmado y la **constancia NOM-151**, los sube a HubSpot, los deja adjuntos en una nota del negocio, lo marca como **firmado** y lo mueve a **Cierre ganado**: hasta que firman, el negocio no está ganado. Si prefieres mover el embudo a mano, borra el nodo *Move the deal to Closed Won* y lo demás sigue igual.\n\nTu llave de AllSign necesita los permisos `webhook:read`, `webhook:write` y `webhook:delete` para que el disparador se registre y limpie lo suyo al final.",
+        "width": 620,
+        "height": 360,
+        "color": 4
+      },
+      "id": "fd54f484-825a-559f-9eb3-cb590d05f40a",
+      "name": "Note 28",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        660
+      ]
+    },
+    {
+      "parameters": {
+        "events": [
+          "document.completed"
+        ],
+        "endpointDescription": "n8n — HubSpot contract template"
+      },
+      "id": "d049cbf2-2d40-585e-b83b-ff1a3f6fe5ab",
+      "name": "Contract signed",
+      "type": "n8n-nodes-allsign.allsignTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        1100
+      ],
+      "credentials": {
+        "allSignApi": {
+          "id": "",
+          "name": "AllSign API"
+        }
+      },
+      "webhookId": "28afc0fc-01da-5315-9ac2-a522109487b5"
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "resource": "deal",
+        "operation": "search",
+        "returnAll": true,
+        "filterGroupsUi": {
+          "filterGroupsValues": [
+            {
+              "filtersUi": {
+                "filterValues": [
+                  {
+                    "propertyName": "allsign_document_id",
+                    "operator": "EQ",
+                    "value": "={{ $json.data.documentId }}"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "properties": [
+            "dealname",
+            "allsign_document_id"
+          ]
+        }
+      },
+      "id": "84b23d63-6db8-5d03-9a3d-f3dda76e3387",
+      "name": "Deal for this contract",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        240,
+        1100
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "",
+          "name": "HubSpot App Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "document",
+        "operation": "getDocumentEvidence",
+        "documentId": "={{ $('Contract signed').item.json.data.documentId }}"
+      },
+      "id": "78c94f1e-5895-59d5-a830-efdc2b4743af",
+      "name": "Signed PDF + NOM-151 certificate",
+      "type": "n8n-nodes-allsign.allsign",
+      "typeVersion": 1,
+      "position": [
+        480,
+        1100
+      ],
+      "credentials": {
+        "allSignApi": {
+          "id": "",
+          "name": "AllSign API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "avail",
+              "leftValue": "={{ ($json.available && !!$json.nom151) || $runIndex >= 15 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ca3e61f6-1e0e-513a-9abb-82b3c8980c44",
+      "name": "Evidence ready?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        1100
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 60,
+        "unit": "seconds"
+      },
+      "id": "b6a8458e-2c1a-5b03-9eb1-f9a02b317c2a",
+      "name": "Wait 1 minute",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        1300
+      ],
+      "webhookId": "38279e46-1a2e-52c1-a88f-4dc07f28eea3"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Un item por archivo que EXISTA. La constancia NOM-151 puede llegar después\n// que la evidencia, y en sandbox no llega nunca.\nconst ev = $input.first().json;\nconst docId = ev.documentId;\nconst out = [];\nif (ev.evidencePdf?.url) out.push({ json: { fileName: `${docId}-signed.pdf`, url: ev.evidencePdf.url, kind: 'Signed PDF' } });\nif (ev.nom151?.url) out.push({ json: { fileName: `${docId}-nom151.pdf`, url: ev.nom151.url, kind: 'NOM-151 certificate' } });\nif (!out.length) throw new Error(`The evidence for ${docId} was still not ready after 15 minutes`);\nreturn out;"
+      },
+      "id": "fd723333-ab96-53ef-8fb2-6a9298f14ad9",
+      "name": "List files to attach",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        1100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "id": "0cf5eb93-2b83-5270-acf2-dfbc17202fef",
+      "name": "Download file",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        1100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/files/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {},
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "fileName",
+              "value": "={{ $('List files to attach').item.json.fileName }}"
+            },
+            {
+              "name": "folderPath",
+              "value": "/AllSign contracts"
+            },
+            {
+              "name": "options",
+              "value": "{\"access\":\"PRIVATE\",\"overwrite\":false}"
+            }
+          ]
+        }
+      },
+      "id": "08d95855-33e8-598c-ab3b-e90c5582a24a",
+      "name": "Upload to HubSpot Files",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        1100
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "",
+          "name": "HubSpot App Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateIndividualFields",
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "id",
+              "renameField": true,
+              "outputFieldName": "fileIds"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "28109d5f-3e91-5007-b7a3-0d21f9d302b6",
+      "name": "Collect file IDs",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1680,
+        1100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/notes",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"properties\": {\"hs_timestamp\": \"{{ $now.toISO() }}\", \"hs_note_body\": \"Contract signed by all parties in AllSign ({{ $('Contract signed').first().json.data.documentId }}). Attached: {{ $('List files to attach').all().map(f => f.json.kind).join(', ') }}.\", \"hs_attachment_ids\": \"{{ $json.fileIds.join(';') }}\"}, \"associations\": [{\"to\": {\"id\": \"{{ $('Deal for this contract').first().json.id }}\"}, \"types\": [{\"associationCategory\": \"HUBSPOT_DEFINED\", \"associationTypeId\": 214}]}]}"
+      },
+      "id": "aa0c9112-001a-537a-8cbc-6b4438da89fd",
+      "name": "Attach evidence to the deal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1920,
+        1100
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "",
+          "name": "HubSpot App Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "resource": "deal",
+        "operation": "update",
+        "dealId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Deal for this contract').first().json.id }}"
+        },
+        "updateFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "allsign_contract_status",
+                "value": "signed"
+              }
+            ]
+          }
+        }
+      },
+      "id": "c5d1ff59-999b-52f7-a7bf-21e0b96bfd55",
+      "name": "Mark contract as signed",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        2160,
+        1100
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "",
+          "name": "HubSpot App Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "resource": "deal",
+        "operation": "update",
+        "dealId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Deal for this contract').first().json.id }}"
+        },
+        "updateFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "dealstage",
+                "value": "closedwon"
+              }
+            ]
+          }
+        }
+      },
+      "id": "1e244d28-ccd4-5d34-a9c0-e3540c6e998b",
+      "name": "Move the deal to Closed Won",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        2400,
+        1100
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "",
+          "name": "HubSpot App Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "no-reply@example.com",
+        "toEmail": "sales@example.com",
+        "subject": "=Signed: {{ $('Deal for this contract').first().json.properties.dealname }}",
+        "emailFormat": "html",
+        "html": "=The contract for <b>{{ $('Deal for this contract').first().json.properties.dealname }}</b> is signed by all parties.<br><br>Attached to the deal in HubSpot: {{ $('List files to attach').all().map(f => f.json.kind).join(', ') }}.",
+        "options": {}
+      },
+      "id": "9047f061-6bb2-5ae5-ae6b-0e09b10e167b",
+      "name": "Tell the team",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2640,
+        1100
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "# Si algo truena\n\nEl **Error Trigger** avisa cuando una corrida termina en error: una credencial mala, AllSign caído, HubSpot que corta por exceso de llamadas. Cuando un contrato no sale (el negocio no tiene contacto, el contacto no tiene correo, o AllSign o HubSpot siguen fallando después de cinco intentos), el negocio queda marcado `error` y la corrida termina en error a propósito para que el aviso salga. Lo mismo si la evidencia de un contrato firmado no llega en 15 minutos.\n\nSolo avisa de las corridas del flujo publicado, no de las que lanzas a mano desde el editor. Mándalo a donde de verdad lo veas: si prefieres tu chat, cambia el nodo de correo por el de tu herramienta.",
+        "width": 560,
+        "height": 260,
+        "color": 3
+      },
+      "id": "53ebdafb-2d88-5195-bc97-5b872fbafa9a",
+      "name": "Note 42",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        1620
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "f0e971f8-84d4-5ca9-b860-01ad4af133a7",
+      "name": "Something failed",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        2000
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "no-reply@example.com",
+        "toEmail": "sales@example.com",
+        "subject": "AllSign contract workflow failed",
+        "emailFormat": "html",
+        "html": "=The run failed at <b>{{ $json.execution.lastNodeExecuted }}</b>.<br><br>{{ $json.execution.error.message }}<br><br><a href=\"{{ $json.execution.url }}\">Open the run</a> to see what happened.",
+        "options": {}
+      },
+      "id": "838ac074-d8ff-5dea-9204-8f12e2b3879b",
+      "name": "Report the failure",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        240,
+        2000
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "# 3 · Recordatorio diario a quien falta por firmar\n\nDe lunes a viernes a las 9:00, hora de la Ciudad de México (la zona se cambia en la configuración del flujo), el flujo toma los negocios cuyo contrato sigue en **enviado**, le pregunta a AllSign quién falta y le manda un recordatorio a cada uno, por el mismo medio que la invitación.\n\nAllSign permite un recordatorio por firmante cada 4 horas y 10 llamadas por minuto: por eso salen de uno en uno con una pausa, y uno rechazado no detiene la corrida.",
+        "width": 620,
+        "height": 320,
+        "color": 4
+      },
+      "id": "463c87cd-2edd-5020-902f-4f28d301b0c4",
+      "name": "Note 45",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        2200
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "edd3f761-8bfa-5e90-8135-eddc32ca2dce",
+      "name": "Every day at 9:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        2600
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "resource": "deal",
+        "operation": "search",
+        "returnAll": true,
+        "filterGroupsUi": {
+          "filterGroupsValues": [
+            {
+              "filtersUi": {
+                "filterValues": [
+                  {
+                    "propertyName": "allsign_contract_status",
+                    "operator": "EQ",
+                    "value": "sent"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "properties": [
+            "dealname",
+            "allsign_document_id"
+          ]
+        }
+      },
+      "id": "37b2db9f-2153-5afc-ae50-d00cde01c5b6",
+      "name": "Deals waiting for signature",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        240,
+        2600
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "",
+          "name": "HubSpot App Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "document",
+        "operation": "listDocumentSigners",
+        "documentId": "={{ $json.properties.allsign_document_id }}"
+      },
+      "id": "894ddde1-c3f5-5fed-9570-b73daaaffa56",
+      "name": "Signers of each contract",
+      "type": "n8n-nodes-allsign.allsign",
+      "typeVersion": 1,
+      "position": [
+        480,
+        2600
+      ],
+      "credentials": {
+        "allSignApi": {
+          "id": "",
+          "name": "AllSign API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "data",
+        "options": {}
+      },
+      "id": "1b5261d8-27a5-58c0-aeee-64a9db5ba8e1",
+      "name": "One item per signer",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        720,
+        2600
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "pend",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "pending",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "sent",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "sent",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "d405031a-7b04-5fcd-90e8-fc0baf23ee43",
+      "name": "Still pending?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        2600
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "9b62851a-1294-54d0-b399-8a90c87b268d",
+      "name": "One at a time",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1200,
+        2600
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "document",
+        "operation": "remindSigner",
+        "documentId": "={{ $json.documentId }}",
+        "signerId": "={{ $json.id }}"
+      },
+      "id": "bc10a3bc-5804-53dd-9f16-c7fe38c44f8a",
+      "name": "Remind signer",
+      "type": "n8n-nodes-allsign.allsign",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        2760
+      ],
+      "credentials": {
+        "allSignApi": {
+          "id": "",
+          "name": "AllSign API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "amount": 7,
+        "unit": "seconds"
+      },
+      "id": "1e19d001-d699-5f4b-8607-47b24d99a808",
+      "name": "Pause 7 seconds",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1680,
+        2760
+      ],
+      "webhookId": "37c7337c-fe93-58e1-adf7-8189ecbbf176"
+    },
+    {
+      "parameters": {
+        "content": "# Instalación (5 minutos)\n\n1. **AllSign** → Desarrolladores → API keys. Crea una llave con los permisos de documentos más `webhook:read`, `webhook:write` y `webhook:delete`. Guárdala en la credencial *AllSign API*.\n2. **HubSpot** → Configuración → Integraciones → Aplicaciones privadas. Crea una con `crm.objects.contacts` (lectura y escritura), `crm.objects.deals` (lectura y escritura), `crm.schemas.deals.read` y `files`. Guarda el token en la credencial *HubSpot App Token*.\n3. En HubSpot agrega dos **propiedades de negocio**: `allsign_document_id` (texto de una línea) y `allsign_contract_status` (desplegable con `created`, `sent`, `signed` y `error`). Un negocio marcado `error` no se reintenta solo: para reintentarlo, borra esas dos propiedades a mano. Antes de hacerlo, busca el contrato en AllSign: si ya existe, no lo reintentes, porque saldría otro y se cobraría dos veces.\n4. Sube tu contrato como **plantilla** en AllSign y pega su id `tmpl_…` en *Prepare contract data*. En ese mismo nodo, más abajo, están las que salen de ti y no del CRM: **empresa_emisora**, **emisor_nombre**, **emisor_correo**, **vigencia**, **jurisdiccion** y **objeto**. Las tres primeras van vacías a propósito: si no las llenas, AllSign rechaza el contrato con un 422 y te enteras, en vez de mandarle a tu cliente un acuerdo con un texto de ejemplo. El correo del emisor tiene que ser distinto al del cliente: la API no acepta dos firmantes con el mismo.\n5. En AllSign, dile a la plantilla dónde van las firmas. Una sola vez, con `PUT /v3/templates/{tuPlantilla}/signing` y este cuerpo:\n```json\n{\"roles\": [\n  {\"name\": \"emisor\",  \"fields\": [{\"roleName\": \"emisor\",  \"kind\": \"signature\", \"page\": 3,\n     \"rect\": {\"x\": 8,  \"y\": 30, \"width\": 35, \"height\": 7},\n     \"anchor\": \"Firma de la Parte emisora\", \"expect\": 1, \"onMiss\": \"fail\"}]},\n  {\"name\": \"cliente\", \"fields\": [{\"roleName\": \"cliente\", \"kind\": \"signature\", \"page\": 3,\n     \"rect\": {\"x\": 55, \"y\": 30, \"width\": 35, \"height\": 7},\n     \"anchor\": \"Firma de la Parte cliente\", \"expect\": 1, \"onMiss\": \"fail\"}]}\n]}\n```\nSin esto, AllSign pone las firmas al pie de la **primera** página, encima de las cláusulas. Los textos del `anchor` son los que trae el acuerdo de este repo; si usas otro documento, pon los tuyos y que aparezcan una sola vez.\nEn este repo, `examples/NDA_Plantilla_AllSign_ES.docx` es un acuerdo de confidencialidad en español con esas mismas variables.\n6. Los dos nodos de correo traen direcciones de ejemplo (`sales@example.com`) que rebotan. Conecta tu servidor de correo y pon tu remitente y tu destinatario, o bórralos.\n7. Publica el flujo. Mueve un negocio a **Contrato enviado** y velo salir. Los que ya estaban en esa etapa al publicarlo no reciben contrato.\n\n8. Abre el nodo *HubSpot calls when a deal changes* y **cambia la ruta** por algo tuyo. Viene con un texto de relleno a propósito: si la dejas, cualquiera que lea este repo puede adivinar tu dirección.\n9. En la aplicación privada, pestaña **Auth**, copia el **secreto de cliente**. No es el token `pat-…`. Pégalo en el nodo *Signature inputs*, en el campo `secreto`. Sin él, el flujo rechaza todos los avisos.\n   Si HubSpot te manda la firma nueva (`X-HubSpot-Signature-v3`), el campo `miUrl` de ese mismo nodo es obligatorio: pon la dirección pública de este webhook, la misma que pegaste en HubSpot. Sin ella, todos los avisos con firma v3 salen rechazados. Para la firma de las aplicaciones privadas, que es la v1, no hace falta.\n10. En esa misma aplicación abre la pestaña **Webhooks**, pega como URL de destino la dirección de producción de ese nodo y suscríbete a **Negocio → Propiedad modificada → Deal Stage**. No hace falta cuenta de desarrollador ni aplicación pública. El flujo tiene que estar publicado antes, si no la dirección todavía no contesta.\n\n**Por qué tanto cuidado:** esa dirección es pública y quien la conozca puede llamarla. Con ella y el número de un negocio, alguien de fuera podría mandar contratos de verdad, y cobrados. Por eso el flujo verifica la firma de HubSpot antes de mirar el contenido, y vuelve a leer el negocio en HubSpot en lugar de creerle al aviso.\n\n**Dos valores que importan más de lo que parecen.** `vigencia` tiene que traer la unidad, por ejemplo *dos años*, porque el contrato dice \"por un plazo de…\". Y `jurisdiccion` tiene que ser el domicilio de alguna de las dos empresas o el lugar donde se cumple el acuerdo: si pones una ciudad sin relación con ninguna, la sumisión a esos tribunales puede no valer.\n\n**¿Otro embudo?** Las etapas `contractsent` y `closedwon` son las del embudo que HubSpot trae de fábrica. Si usas uno propio, cambia `contractsent` por el identificador de tu etapa en *The deal that just moved* (en `hs_v2_date_entered_contractsent`, entre las propiedades que lee), en *Really in Contract Sent, with no contract?* y en el campo `fecha_efectiva` de *Prepare contract data*; y `closedwon` en *Move the deal to Closed Won*. El identificador de tu etapa sale de HubSpot, en la configuración del embudo.\n\n**¿Correo o WhatsApp?** Sale por correo. Para mandarlo por WhatsApp abre *Prepare contract data*, campo `channel`, y en la primera línea cambia `prefiere` de `email` a `whatsapp`. Para WhatsApp el teléfono tiene que traer la lada (`+52…`) o poder completarse con la del país que traiga el contacto en HubSpot; si no se puede, ese contrato se va por correo en lugar de fallar. El correo del contacto hace falta siempre: el contrato lo lleva escrito.",
+        "width": 780,
+        "height": 520,
+        "color": 6
+      },
+      "id": "158f35a1-89c3-524d-88dd-b02e64397a8a",
+      "name": "Note 54",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        620,
+        -260
+      ]
+    }
+  ],
+  "connections": {
+    "HubSpot calls when a deal changes": {
+      "main": [
+        [
+          {
+            "node": "The body, byte for byte",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "The body, byte for byte": {
+      "main": [
+        [
+          {
+            "node": "Signature inputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Signature inputs": {
+      "main": [
+        [
+          {
+            "node": "Which signature version?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign it the v3 way": {
+      "main": [
+        [
+          {
+            "node": "Signature checks out?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign it the v1 way": {
+      "main": [
+        [
+          {
+            "node": "Signature checks out?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Signature checks out?": {
+      "main": [
+        [
+          {
+            "node": "Thanks, got it",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Not HubSpot — refuse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Thanks, got it": {
+      "main": [
+        [
+          {
+            "node": "The events, parsed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "The events, parsed": {
+      "main": [
+        [
+          {
+            "node": "One item per event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One item per event": {
+      "main": [
+        [
+          {
+            "node": "Moved to Contract Sent?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Moved to Contract Sent?": {
+      "main": [
+        [
+          {
+            "node": "The deal that just moved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "The deal that just moved": {
+      "main": [
+        [
+          {
+            "node": "Really in Contract Sent, with no contract?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Really in Contract Sent, with no contract?": {
+      "main": [
+        [
+          {
+            "node": "Contact linked to the deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact linked to the deal": {
+      "main": [
+        [
+          {
+            "node": "Deal has a contact?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact details": {
+      "main": [
+        [
+          {
+            "node": "Prepare contract data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare contract data": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp or email?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create contract in AllSign": {
+      "main": [
+        [
+          {
+            "node": "Save contract ID on the deal",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark deal as failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save contract ID on the deal": {
+      "main": [
+        [
+          {
+            "node": "Send for signature",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark deal as failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send for signature": {
+      "main": [
+        [
+          {
+            "node": "Mark contract as sent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark deal as failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark contract as sent": {
+      "main": [
+        [
+          {
+            "node": "Log 'contract sent' on the deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark deal as failed": {
+      "main": [
+        [
+          {
+            "node": "Stop: no contract went out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deal has a contact?": {
+      "main": [
+        [
+          {
+            "node": "Contact details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark deal as failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Which signature version?": {
+      "main": [
+        [
+          {
+            "node": "Sign it the v3 way",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sign it the v1 way",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp or email?": {
+      "main": [
+        [
+          {
+            "node": "Contact has an email?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Contact has an email?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact has an email?": {
+      "main": [
+        [
+          {
+            "node": "Create contract in AllSign",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark deal as failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Something failed": {
+      "main": [
+        [
+          {
+            "node": "Report the failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contract signed": {
+      "main": [
+        [
+          {
+            "node": "Deal for this contract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deal for this contract": {
+      "main": [
+        [
+          {
+            "node": "Signed PDF + NOM-151 certificate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Signed PDF + NOM-151 certificate": {
+      "main": [
+        [
+          {
+            "node": "Evidence ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 1 minute": {
+      "main": [
+        [
+          {
+            "node": "Signed PDF + NOM-151 certificate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List files to attach": {
+      "main": [
+        [
+          {
+            "node": "Download file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download file": {
+      "main": [
+        [
+          {
+            "node": "Upload to HubSpot Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to HubSpot Files": {
+      "main": [
+        [
+          {
+            "node": "Collect file IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect file IDs": {
+      "main": [
+        [
+          {
+            "node": "Attach evidence to the deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach evidence to the deal": {
+      "main": [
+        [
+          {
+            "node": "Mark contract as signed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark contract as signed": {
+      "main": [
+        [
+          {
+            "node": "Move the deal to Closed Won",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move the deal to Closed Won": {
+      "main": [
+        [
+          {
+            "node": "Tell the team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evidence ready?": {
+      "main": [
+        [
+          {
+            "node": "List files to attach",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 1 minute",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every day at 9:00": {
+      "main": [
+        [
+          {
+            "node": "Deals waiting for signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deals waiting for signature": {
+      "main": [
+        [
+          {
+            "node": "Signers of each contract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Signers of each contract": {
+      "main": [
+        [
+          {
+            "node": "One item per signer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One item per signer": {
+      "main": [
+        [
+          {
+            "node": "Still pending?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Still pending?": {
+      "main": [
+        [
+          {
+            "node": "One at a time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remind signer": {
+      "main": [
+        [
+          {
+            "node": "Pause 7 seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pause 7 seconds": {
+      "main": [
+        [
+          {
+            "node": "One at a time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One at a time": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Remind signer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Mexico_City"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
