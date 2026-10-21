@@ -2,10 +2,22 @@
 
 All notable changes to `n8n-nodes-allsign` will be documented in this file.
 
-## [0.7.0] — 2026-10-09
+## [0.7.0] — 2026-10-20
+
+### ✨ Added
+
+- **AllSign Trigger** — a trigger node, so a workflow can *start* from AllSign instead of only acting on it. Until now the node could create and send documents, but nothing in n8n knew when one got signed: you had to poll, or wire a bare Webhook node and verify the signature by hand. The Trigger registers its own endpoint through `POST /v3/webhooks` when the workflow is activated and removes it on deactivation, so there is nothing to set up in the AllSign dashboard. The event list is loaded live from `GET /v3/webhooks/events`, which means a new AllSign event shows up in the dropdown without shipping a release.
+- **Standard Webhooks signature verification** — every delivery is checked against `{webhook-id}.{webhook-timestamp}.{raw body}` with an HMAC, in constant time, and replays older than five minutes are rejected. Implemented in-tree rather than through a dependency: it is fifteen lines, and a community node with extra packages is a bigger ask of n8n's review.
+- **The endpoint survives the things that go wrong around it.** It is looked up by id rather than searched for in a list, which only returns the twenty most recent — in a busier account the node would have missed its own endpoint and registered a second one against the same URL, and the first would have kept signing with a secret n8n no longer had. A 500 or a dropped connection counts as "unknown", not "gone". An endpoint the circuit breaker disabled is reactivated, keeping its id and secret. A reused endpoint gets the node's current events, so an endpoint that outlived a failed deactivation doesn't keep listening to the old ones. One that points somewhere else is left alone, because it may belong to a workflow someone imported.
+- **Deactivating never leaves an endpoint behind without saying so.** Only a 404 is ignored when removing; any other failure is raised, which keeps the id so the next activation reuses it instead of orphaning the old endpoint.
+
+### 🔐 Credentials
+
+- The AllSign API key used by the Trigger needs `webhook:read`, `webhook:write` and `webhook:delete` on top of `document:*`. The scopes are checked when you activate the workflow — the one moment n8n shows the error on screen — and the message names the ones that are missing.
 
 ### 🐛 Fixed
 
+- **Documentation links no longer lead to a dead domain.** `docs.allsign.io` doesn't resolve, and it was the first thing someone who had just installed the node ran into: the credential description and the node catalog pointed there. They now go to `allsign.io/developers/docs`. A test checks that the credential, the catalog and the example workflow only point to `allsign.io` or `api.allsign.io`, and a CI step covers what the test can't read, such as the README.
 - **The package passes the scanner n8n runs before verifying a community node.** n8n lints two things: the published tarball, and the source of the commit that the npm provenance attests — tests included, with `eslint-disable` comments ignored. The source had eight errors that only the second pass sees. *List Documents* now defaults `Limit` to 50 with n8n's standard description (the API accepts 1–100 either way, and the node always sends the value), a validation error raised inside the node is re-thrown as a `NodeOperationError`, test fixtures no longer look like real API keys, and the download of a file by URL lives in its own function so it isn't read as hand-rolled authentication. The build no longer emits `.d.ts` files, which the package never needed.
 - **`npm run scan` runs both of n8n's passes** with the scanner version pinned, and CI and the publish workflow run it, so a release that would fail verification fails before it reaches npm — a published version can't be replaced.
 

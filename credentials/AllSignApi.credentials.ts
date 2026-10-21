@@ -8,7 +8,7 @@ import type {
 export class AllSignApi implements ICredentialType {
     name = 'allSignApi';
     displayName = 'AllSign API';
-    documentationUrl = 'https://docs.allsign.io';
+    documentationUrl = 'https://allsign.io/developers/docs/authentication';
     icon = {
         light: 'file:allsign.svg',
         dark: 'file:allsign.svg',
@@ -21,7 +21,7 @@ export class AllSignApi implements ICredentialType {
             typeOptions: { password: true },
             default: '',
             placeholder: 'allsign_live_sk_...',
-            description: 'Your AllSign API Key. Visit your <a href="https://dashboard.allsign.io/developers/api-keys">AllSign Dashboard</a> to generate a key.',
+            description: 'Your AllSign API Key. Visit your <a href="https://allsign.io/developers/api-keys">AllSign Dashboard</a> to generate a key.',
         },
         {
             displayName: 'Base URL',
