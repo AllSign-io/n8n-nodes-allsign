@@ -146,6 +146,8 @@ How it works:
 - Every delivery is **signature-verified** ([Standard Webhooks](https://www.standardwebhooks.com/)) with the secret AllSign hands over at registration. A delivery with a bad or missing signature is answered `401` and never reaches your workflow; AllSign records it under the endpoint's deliveries.
 - A delivery AllSign retries (same event id) is acknowledged but the workflow does not run twice.
 - If n8n restarts, the existing endpoint is reused — no duplicates. If someone deletes it from the dashboard, the node registers a fresh one on next activation.
+- When the node reuses an existing endpoint, it first brings the endpoint's events in line with the ones selected in the node.
+- An AllSign account holds up to **25 webhook endpoints**, and disabled ones count toward that limit. Past it, activating fails with the API's error; delete the endpoints you no longer use from the dashboard.
 
 > Reference: [Webhooks](https://allsign.io/developers/docs/webhooks) and the [receive-and-verify recipe](https://allsign.io/developers/docs/recetas/recibe-y-verifica-webhooks).
 

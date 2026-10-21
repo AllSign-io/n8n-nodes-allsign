@@ -286,12 +286,11 @@ export class AllsignTrigger implements INodeType {
 
 				let live: IDataObject;
 				try {
-					const response = (await this.helpers.httpRequestWithAuthentication.call(
+					live = (await this.helpers.httpRequestWithAuthentication.call(
 						this,
 						'allSignApi',
 						{ method: 'GET', url: endpointUrl, json: true },
-					)) as IDataObject & { data?: IDataObject };
-					live = (response.data ?? response) as IDataObject;
+					)) as IDataObject;
 				} catch (error) {
 					if (httpStatusOf(error) === 404) return olvidar();
 					// Un 500 o una caída de red NO significan que el endpoint murió.
@@ -303,13 +302,20 @@ export class AllsignTrigger implements INodeType {
 				// por ejemplo uno importado. Borrarlo dejaría al original sin recibir.
 				if (live.url !== webhookUrl) return olvidar();
 
+				const events = this.getNodeParameter('events') as string[];
+				const changes: IDataObject = {};
 				if (live.status === 'disabled') {
 					// Lo apagó el circuit breaker. Reactivarlo conserva id y secreto;
 					// recrearlo los perdería y dejaría el viejo colgado.
+					changes.disabled = false;
+				}
+				if (!sameEvents(live.events, events)) changes.events = events;
+
+				if (Object.keys(changes).length) {
 					await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
 						method: 'PATCH',
 						url: endpointUrl,
-						body: { disabled: false },
+						body: changes,
 						json: true,
 					});
 				}
@@ -460,6 +466,11 @@ export class AllsignTrigger implements INodeType {
 function refuse(context: IWebhookFunctions): IWebhookResponseData {
 	context.getResponseObject().status(401).send('Unauthorized').end();
 	return { noWebhookResponse: true };
+}
+
+function sameEvents(registered: unknown, wanted: string[]): boolean {
+	const current = new Set(Array.isArray(registered) ? (registered as string[]) : []);
+	return current.size === new Set(wanted).size && wanted.every((event) => current.has(event));
 }
 
 /** La base de la API que trae la credencial, sin diagonal final. */

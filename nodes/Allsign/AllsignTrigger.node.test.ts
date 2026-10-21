@@ -26,6 +26,7 @@ function sign(id: string, timestamp: number, body: string, secret = SECRET): str
 }
 
 const EVENT_ID = 'evt_9f8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d';
+const ENDPOINT_ID = 'whe_7c1d4e9a2b3f45608a9e1d2c3b4a5f60';
 const BODY = JSON.stringify({
 	eventId: EVENT_ID,
 	eventType: 'signer.signed',
@@ -169,6 +170,31 @@ describe('AllSign Trigger', () => {
 			expect(verifyStandardWebhook(BODY, headers, SECRET, now).ok).toBe(false);
 		});
 
+		it('rechaza una entrega con el reloj adelantado fuera de la ventana', () => {
+			const futuro = now + 3600;
+			const result = verifyStandardWebhook(
+				BODY,
+				{ id: EVENT_ID, timestamp: String(futuro), signature: sign(EVENT_ID, futuro, BODY) },
+				SECRET,
+				now,
+			);
+			expect(result).toEqual({
+				ok: false,
+				reason: 'webhook-timestamp outside the replay window',
+			});
+		});
+
+		it('solo acepta firmas con el prefijo v1', () => {
+			const sinVersion = sign(EVENT_ID, now, BODY).slice(3);
+			const result = verifyStandardWebhook(
+				BODY,
+				{ id: EVENT_ID, timestamp: String(now), signature: `v2,${sinVersion} ${sinVersion}` },
+				SECRET,
+				now,
+			);
+			expect(result).toEqual({ ok: false, reason: 'no signature matched' });
+		});
+
 		it('acepta el cuerpo como Buffer, que es como llega de verdad', () => {
 			const result = verifyStandardWebhook(
 				Buffer.from(BODY, 'utf8'),
@@ -189,7 +215,7 @@ describe('AllSign Trigger', () => {
 		) {
 			const body = opciones.body ?? BODY;
 			const staticData = {
-				webhookId: 'whe_1',
+				webhookId: ENDPOINT_ID,
 				secret: opciones.secret ?? SECRET,
 				seenEventIds: opciones.seenEventIds ?? [],
 			};
@@ -263,6 +289,28 @@ describe('AllSign Trigger', () => {
 			await new AllsignTrigger().webhook.call(context as never);
 
 			expect(staticData.seenEventIds).toContain(EVENT_ID);
+		});
+
+		it('verifica los bytes que llegaron aunque n8n entregue el cuerpo ya parseado', async () => {
+			const { context } = contextoDeEntrega({ body: JSON.stringify(JSON.parse(BODY), null, 2) });
+			const result = await new AllsignTrigger().webhook.call(context as never);
+
+			expect(result.workflowData?.[0]?.[0].json).toEqual(expect.objectContaining({ eventId: EVENT_ID }));
+		});
+
+		it('no apunta como visto un evento cuya firma no cuadró', async () => {
+			const { context, staticData } = contextoDeEntrega({ signature: 'v1,firmaInventada' });
+			await new AllsignTrigger().webhook.call(context as never);
+
+			expect(staticData.seenEventIds).toEqual([]);
+		});
+
+		it('recuerda solo los últimos 200 eventos', async () => {
+			const previos = Array.from({ length: 200 }, (_, n) => `evt_previo_${n}`);
+			const { context, staticData } = contextoDeEntrega({ seenEventIds: previos });
+			await new AllsignTrigger().webhook.call(context as never);
+
+			expect(staticData.seenEventIds).toEqual([...previos.slice(1), EVENT_ID]);
 		});
 	});
 
@@ -345,6 +393,16 @@ describe('AllSign Trigger', () => {
 		const URL_N8N = 'https://n8n.example.com/webhook/abc';
 		const BASE = 'https://api.allsign.io';
 		const TODOS_LOS_SCOPES = ['document:*', 'webhook:read', 'webhook:write', 'webhook:delete'];
+		const EVENTOS = ['document.completed'];
+		const endpoint = (cambios: Record<string, unknown> = {}) => ({
+			id: ENDPOINT_ID,
+			url: URL_N8N,
+			status: 'enabled',
+			events: EVENTOS,
+			description: null,
+			secretLast4: 'Xy9z',
+			...cambios,
+		});
 
 		/** Un error como el que lanza httpRequestWithAuthentication: el código va como texto. */
 		const errorHttp = (status: number) =>
@@ -353,7 +411,7 @@ describe('AllSign Trigger', () => {
 		function contexto(
 			staticData: Record<string, unknown>,
 			responder: (opciones: { method?: string; url: string }) => unknown,
-			parametros: Record<string, unknown> = {},
+			parametros: Record<string, unknown> = { events: EVENTOS },
 		) {
 			const peticiones: Array<{ method: string; url: string; body?: unknown }> = [];
 			return {
@@ -381,17 +439,15 @@ describe('AllSign Trigger', () => {
 
 		describe('checkExists', () => {
 			it('pregunta por SU id, no por la lista: una cuenta con 20+ endpoints ya no duplica', async () => {
-				const c = contexto({ webhookId: 'whe_1', secret: 'whsec_x' }, () => ({
-					data: { id: 'whe_1', url: URL_N8N, status: 'enabled' },
-				}));
+				const c = contexto({ webhookId: ENDPOINT_ID, secret: 'whsec_x' }, () => endpoint());
 
 				await expect(hooks().checkExists.call(c.hook as never)).resolves.toBe(true);
 				expect(c.peticiones).toHaveLength(1);
-				expect(c.peticiones[0]).toMatchObject({ method: 'GET', url: `${BASE}/v3/webhooks/whe_1` });
+				expect(c.peticiones[0]).toMatchObject({ method: 'GET', url: `${BASE}/v3/webhooks/${ENDPOINT_ID}` });
 			});
 
 			it('con 404 olvida todo y deja que n8n lo vuelva a crear', async () => {
-				const c = contexto({ webhookId: 'whe_1', secret: 'whsec_x', seenEventIds: ['evt_1'] }, () => {
+				const c = contexto({ webhookId: ENDPOINT_ID, secret: 'whsec_x', seenEventIds: ['evt_1'] }, () => {
 					throw errorHttp(404);
 				});
 
@@ -400,27 +456,27 @@ describe('AllSign Trigger', () => {
 			});
 
 			it('con 500 falla la activación en vez de crear un duplicado', async () => {
-				const c = contexto({ webhookId: 'whe_1', secret: 'whsec_x' }, () => {
+				const c = contexto({ webhookId: ENDPOINT_ID, secret: 'whsec_x' }, () => {
 					throw errorHttp(500);
 				});
 
 				await expect(hooks().checkExists.call(c.hook as never)).rejects.toThrow();
-				expect(c.staticData.webhookId).toBe('whe_1');
+				expect(c.staticData.webhookId).toBe(ENDPOINT_ID);
 			});
 
 			it('una caída de red tampoco cuenta como endpoint muerto', async () => {
-				const c = contexto({ webhookId: 'whe_1', secret: 'whsec_x' }, () => {
+				const c = contexto({ webhookId: ENDPOINT_ID, secret: 'whsec_x' }, () => {
 					throw new Error('ECONNREFUSED');
 				});
 
 				await expect(hooks().checkExists.call(c.hook as never)).rejects.toThrow();
-				expect(c.staticData.webhookId).toBe('whe_1');
+				expect(c.staticData.webhookId).toBe(ENDPOINT_ID);
 			});
 
 			it('si apunta a otra URL lo olvida SIN borrarlo: puede ser de otro workflow', async () => {
-				const c = contexto({ webhookId: 'whe_1', secret: 'whsec_x' }, () => ({
-					data: { id: 'whe_1', url: 'https://otro-n8n.example.com/webhook/zzz', status: 'enabled' },
-				}));
+				const c = contexto({ webhookId: ENDPOINT_ID, secret: 'whsec_x' }, () =>
+					endpoint({ url: 'https://otro-n8n.example.com/webhook/zzz' }),
+				);
 
 				await expect(hooks().checkExists.call(c.hook as never)).resolves.toBe(false);
 				expect(c.staticData).toEqual({});
@@ -428,17 +484,76 @@ describe('AllSign Trigger', () => {
 			});
 
 			it('si el circuit breaker lo apagó, lo reactiva y conserva id y secreto', async () => {
-				const c = contexto({ webhookId: 'whe_1', secret: 'whsec_x' }, (o) =>
-					o.method === 'PATCH' ? {} : { data: { id: 'whe_1', url: URL_N8N, status: 'disabled' } },
+				const c = contexto({ webhookId: ENDPOINT_ID, secret: 'whsec_x' }, (o) =>
+					o.method === 'PATCH' ? endpoint() : endpoint({ status: 'disabled' }),
 				);
 
 				await expect(hooks().checkExists.call(c.hook as never)).resolves.toBe(true);
-				expect(c.peticiones[1]).toMatchObject({
+				expect(c.peticiones[1]).toEqual({
 					method: 'PATCH',
-					url: `${BASE}/v3/webhooks/whe_1`,
+					url: `${BASE}/v3/webhooks/${ENDPOINT_ID}`,
 					body: { disabled: false },
 				});
-				expect(c.staticData).toEqual({ webhookId: 'whe_1', secret: 'whsec_x' });
+				expect(c.staticData).toEqual({ webhookId: ENDPOINT_ID, secret: 'whsec_x' });
+			});
+
+			it('si los eventos del nodo cambiaron, se los pone al endpoint que ya existe', async () => {
+				const c = contexto(
+					{ webhookId: ENDPOINT_ID, secret: 'whsec_x' },
+					(o) => (o.method === 'PATCH' ? endpoint({ events: ['document.completed', 'signer.signed'] }) : endpoint()),
+					{ events: ['document.completed', 'signer.signed'] },
+				);
+
+				await expect(hooks().checkExists.call(c.hook as never)).resolves.toBe(true);
+				expect(c.peticiones.slice(1)).toEqual([
+					{
+						method: 'PATCH',
+						url: `${BASE}/v3/webhooks/${ENDPOINT_ID}`,
+						body: { events: ['document.completed', 'signer.signed'] },
+					},
+				]);
+			});
+
+			it('si al nodo le quitaron un evento, el endpoint también lo deja de recibir', async () => {
+				const c = contexto(
+					{ webhookId: ENDPOINT_ID, secret: 'whsec_x' },
+					(o) => (o.method === 'PATCH' ? endpoint() : endpoint({ events: ['document.completed', 'signer.signed'] })),
+				);
+
+				await expect(hooks().checkExists.call(c.hook as never)).resolves.toBe(true);
+				expect(c.peticiones[1]).toEqual({
+					method: 'PATCH',
+					url: `${BASE}/v3/webhooks/${ENDPOINT_ID}`,
+					body: { events: EVENTOS },
+				});
+			});
+
+			it('los mismos eventos en otro orden no cuentan como cambio', async () => {
+				const c = contexto(
+					{ webhookId: ENDPOINT_ID, secret: 'whsec_x' },
+					() => endpoint({ events: ['signer.signed', 'document.completed'] }),
+					{ events: ['document.completed', 'signer.signed'] },
+				);
+
+				await expect(hooks().checkExists.call(c.hook as never)).resolves.toBe(true);
+				expect(c.peticiones.map((p) => p.method)).toEqual(['GET']);
+			});
+
+			it('apagado y con otros eventos, lo arregla en un solo PATCH', async () => {
+				const c = contexto(
+					{ webhookId: ENDPOINT_ID, secret: 'whsec_x' },
+					(o) => (o.method === 'PATCH' ? endpoint({ events: ['signer.signed'] }) : endpoint({ status: 'disabled' })),
+					{ events: ['signer.signed'] },
+				);
+
+				await expect(hooks().checkExists.call(c.hook as never)).resolves.toBe(true);
+				expect(c.peticiones.slice(1)).toEqual([
+					{
+						method: 'PATCH',
+						url: `${BASE}/v3/webhooks/${ENDPOINT_ID}`,
+						body: { disabled: false, events: ['signer.signed'] },
+					},
+				]);
 			});
 
 			it('sin nada guardado ni pregunta', async () => {
@@ -455,7 +570,7 @@ describe('AllSign Trigger', () => {
 					(o) =>
 						o.url.endsWith('/v3/users/me')
 							? { scopes }
-							: { id: 'whe_nuevo', secret: 'whsec_nuevo' },
+							: { ...endpoint(), secret: 'whsec_nuevo' },
 					{ events: ['document.completed'], endpointDescription: '' },
 				);
 
@@ -482,7 +597,7 @@ describe('AllSign Trigger', () => {
 
 				await expect(hooks().create.call(c.hook as never)).resolves.toBe(true);
 				expect(c.staticData).toEqual({
-					webhookId: 'whe_nuevo',
+					webhookId: ENDPOINT_ID,
 					secret: 'whsec_nuevo',
 					seenEventIds: [],
 				});
@@ -491,15 +606,15 @@ describe('AllSign Trigger', () => {
 
 		describe('delete', () => {
 			it('con 204 olvida todo', async () => {
-				const c = contexto({ webhookId: 'whe_1', secret: 'whsec_x', seenEventIds: ['evt_1'] }, () => ({}));
+				const c = contexto({ webhookId: ENDPOINT_ID, secret: 'whsec_x', seenEventIds: ['evt_1'] }, () => ({}));
 
 				await expect(hooks().delete.call(c.hook as never)).resolves.toBe(true);
-				expect(c.peticiones[0]).toMatchObject({ method: 'DELETE', url: `${BASE}/v3/webhooks/whe_1` });
+				expect(c.peticiones[0]).toMatchObject({ method: 'DELETE', url: `${BASE}/v3/webhooks/${ENDPOINT_ID}` });
 				expect(c.staticData).toEqual({});
 			});
 
 			it('con 404 tampoco truena: ya no existe', async () => {
-				const c = contexto({ webhookId: 'whe_1', secret: 'whsec_x' }, () => {
+				const c = contexto({ webhookId: ENDPOINT_ID, secret: 'whsec_x' }, () => {
 					throw errorHttp(404);
 				});
 
@@ -508,21 +623,21 @@ describe('AllSign Trigger', () => {
 			});
 
 			it('con 403 lanza y CONSERVA el id, para no dejar el endpoint huérfano', async () => {
-				const c = contexto({ webhookId: 'whe_1', secret: 'whsec_x' }, () => {
+				const c = contexto({ webhookId: ENDPOINT_ID, secret: 'whsec_x' }, () => {
 					throw errorHttp(403);
 				});
 
 				await expect(hooks().delete.call(c.hook as never)).rejects.toThrow();
-				expect(c.staticData).toEqual({ webhookId: 'whe_1', secret: 'whsec_x' });
+				expect(c.staticData).toEqual({ webhookId: ENDPOINT_ID, secret: 'whsec_x' });
 			});
 
 			it('una caída de red también conserva el id', async () => {
-				const c = contexto({ webhookId: 'whe_1', secret: 'whsec_x' }, () => {
+				const c = contexto({ webhookId: ENDPOINT_ID, secret: 'whsec_x' }, () => {
 					throw new Error('ETIMEDOUT');
 				});
 
 				await expect(hooks().delete.call(c.hook as never)).rejects.toThrow();
-				expect(c.staticData.webhookId).toBe('whe_1');
+				expect(c.staticData.webhookId).toBe(ENDPOINT_ID);
 			});
 		});
 	});
