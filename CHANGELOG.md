@@ -2,7 +2,7 @@
 
 All notable changes to `n8n-nodes-allsign` will be documented in this file.
 
-## [0.7.0] — 2026-10-09
+## [0.7.0] — 2026-10-20
 
 ### ✨ Added
 
@@ -18,6 +18,8 @@ All notable changes to `n8n-nodes-allsign` will be documented in this file.
 ### 🐛 Fixed
 
 - **Documentation links no longer lead to a dead domain.** `docs.allsign.io` doesn't resolve, and it was the first thing someone who had just installed the node ran into: the credential description and the node catalog pointed there. They now go to `allsign.io/developers/docs`. A test checks that the credential, the catalog and the example workflow only point to `allsign.io` or `api.allsign.io`, and a CI step covers what the test can't read, such as the README.
+- **The package passes the scanner n8n runs before verifying a community node.** n8n lints two things: the published tarball, and the source of the commit that the npm provenance attests — tests included, with `eslint-disable` comments ignored. The source had eight errors that only the second pass sees. *List Documents* now defaults `Limit` to 50 with n8n's standard description (the API accepts 1–100 either way, and the node always sends the value), a validation error raised inside the node is re-thrown as a `NodeOperationError`, test fixtures no longer look like real API keys, and the download of a file by URL lives in its own function so it isn't read as hand-rolled authentication. The build no longer emits `.d.ts` files, which the package never needed.
+- **`npm run scan` runs both of n8n's passes** with the scanner version pinned, and CI and the publish workflow run it, so a release that would fail verification fails before it reaches npm — a published version can't be replaced.
 
 ## [0.6.0] — 2026-08-26
 
