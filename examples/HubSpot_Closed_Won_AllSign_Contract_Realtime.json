@@ -31,7 +31,7 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -1440,
+        -1920,
         300
       ],
       "webhookId": "c98fddf6-38b7-55de-9696-4cf3cddd365b"
@@ -48,7 +48,7 @@
       "type": "n8n-nodes-base.extractFromFile",
       "typeVersion": 1,
       "position": [
-        -1200,
+        -1680,
         300
       ]
     },
@@ -109,7 +109,7 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -960,
+        -1440,
         300
       ]
     },
@@ -143,7 +143,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -720,
+        -1200,
         300
       ]
     },
@@ -161,7 +161,7 @@
       "type": "n8n-nodes-base.crypto",
       "typeVersion": 1,
       "position": [
-        -480,
+        -960,
         120
       ]
     },
@@ -178,7 +178,7 @@
       "type": "n8n-nodes-base.crypto",
       "typeVersion": 1,
       "position": [
-        -480,
+        -960,
         480
       ]
     },
@@ -214,11 +214,12 @@
             },
             {
               "id": "cuadra",
-              "leftValue": "={{ $json.calculada }}",
-              "rightValue": "={{ $json.firmaV3 || $json.firmaV1 }}",
+              "leftValue": "={{ (() => {\n  const a = $json.calculada || '';\n  const b = $json.firmaV3 || $json.firmaV1 || '';\n  let diff = a.length ^ b.length;\n  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i % (b.length || 1));\n  return diff === 0;\n})() }}",
+              "rightValue": true,
               "operator": {
-                "type": "string",
-                "operation": "equals"
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
               }
             }
           ],
@@ -231,7 +232,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -240,
+        -720,
         300
       ]
     },
@@ -247,8 +248,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        720,
-        600
+        -480,
+        300
       ]
     },
     {
@@ -264,8 +265,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        480,
-        600
+        -480,
+        520
       ]
     },
     {
@@ -303,7 +304,7 @@
       "typeVersion": 3.4,
       "position": [
         -240,
-        460
+        300
       ]
     },
     {
@@ -1579,7 +1580,7 @@
     },
     {
       "parameters": {
-        "content": "# Instalación (5 minutos)\n\n1. **AllSign** → Desarrolladores → API keys. Crea una llave con los permisos de documentos más `webhook:read`, `webhook:write` y `webhook:delete`. Guárdala en la credencial *AllSign API*.\n2. **HubSpot** → Configuración → Integraciones → Aplicaciones privadas. Crea una con `crm.objects.contacts` (lectura y escritura), `crm.objects.deals` (lectura y escritura), `crm.schemas.deals.read` y `files`. Guarda el token en la credencial *HubSpot App Token*.\n3. En HubSpot agrega dos **propiedades de negocio**: `allsign_document_id` (texto de una línea) y `allsign_contract_status` (desplegable con `created`, `sent`, `signed` y `error`). Un negocio marcado `error` no se reintenta solo: para reintentarlo, borra esas dos propiedades a mano. Antes de hacerlo, busca el contrato en AllSign: si ya existe, no lo reintentes, porque saldría otro y se cobraría dos veces.\n4. Sube tu contrato como **plantilla** en AllSign y pega su id `tmpl_…` en *Prepare contract data*. En ese mismo nodo, más abajo, están las que salen de ti y no del CRM: **empresa_emisora**, **emisor_nombre**, **emisor_correo**, **vigencia**, **jurisdiccion** y **objeto**. Las tres primeras van vacías a propósito: si no las llenas, AllSign rechaza el contrato con un 422 y te enteras, en vez de mandarle a tu cliente un acuerdo con un texto de ejemplo. El correo del emisor tiene que ser distinto al del cliente: la API no acepta dos firmantes con el mismo.\n5. En AllSign, dile a la plantilla dónde van las firmas. Una sola vez, con `PUT /v3/templates/{tuPlantilla}/signing` y este cuerpo:\n```json\n{\"roles\": [\n  {\"name\": \"emisor\",  \"fields\": [{\"roleName\": \"emisor\",  \"kind\": \"signature\", \"page\": 3,\n     \"rect\": {\"x\": 8,  \"y\": 30, \"width\": 35, \"height\": 7},\n     \"anchor\": \"Firma de la Parte emisora\", \"expect\": 1, \"onMiss\": \"fail\"}]},\n  {\"name\": \"cliente\", \"fields\": [{\"roleName\": \"cliente\", \"kind\": \"signature\", \"page\": 3,\n     \"rect\": {\"x\": 55, \"y\": 30, \"width\": 35, \"height\": 7},\n     \"anchor\": \"Firma de la Parte cliente\", \"expect\": 1, \"onMiss\": \"fail\"}]}\n]}\n```\nSin esto, AllSign pone las firmas al pie de la **primera** página, encima de las cláusulas. Los textos del `anchor` son los que trae el acuerdo de este repo; si usas otro documento, pon los tuyos y que aparezcan una sola vez.\nEn este repo, `examples/NDA_Plantilla_AllSign_ES.docx` es un acuerdo de confidencialidad en español con esas mismas variables.\n6. Los dos nodos de correo traen direcciones de ejemplo (`sales@example.com`) que rebotan. Conecta tu servidor de correo y pon tu remitente y tu destinatario, o bórralos.\n7. Publica el flujo. Mueve un negocio a **Contrato enviado** y velo salir. Los que ya estaban en esa etapa al publicarlo no reciben contrato.\n\n8. Abre el nodo *HubSpot calls when a deal changes* y **cambia la ruta** por algo tuyo. Viene con un texto de relleno a propósito: si la dejas, cualquiera que lea este repo puede adivinar tu dirección.\n9. En la aplicación privada, pestaña **Auth**, copia el **secreto de cliente**. No es el token `pat-…`. Pégalo en la primera línea del nodo *Is it really HubSpot?*, donde dice `let secreto = ''`. Sin él, el flujo rechaza todos los avisos.\n   Si además HubSpot te manda la firma nueva (`X-HubSpot-Signature-v3`), llena también el campo `miUrl` de ese nodo con la dirección pública de este webhook, la misma que pegaste en HubSpot. Para la firma de las aplicaciones privadas, que es la v1, no hace falta.\n10. En esa misma aplicación abre la pestaña **Webhooks**, pega como URL de destino la dirección de producción de ese nodo y suscríbete a **Negocio → Propiedad modificada → Deal Stage**. No hace falta cuenta de desarrollador ni aplicación pública. El flujo tiene que estar publicado antes, si no la dirección todavía no contesta.\n\n**Por qué tanto cuidado:** esa dirección es pública y quien la conozca puede llamarla. Con ella y el número de un negocio, alguien de fuera podría mandar contratos de verdad, y cobrados. Por eso el flujo verifica la firma de HubSpot antes de mirar el contenido, y vuelve a leer el negocio en HubSpot en lugar de creerle al aviso.\n\n**Dos valores que importan más de lo que parecen.** `vigencia` tiene que traer la unidad, por ejemplo *dos años*, porque el contrato dice \"por un plazo de…\". Y `jurisdiccion` tiene que ser el domicilio de alguna de las dos empresas o el lugar donde se cumple el acuerdo: si pones una ciudad sin relación con ninguna, la sumisión a esos tribunales puede no valer.\n\n**¿Otro embudo?** Las etapas `contractsent` y `closedwon` son las del embudo que HubSpot trae de fábrica. Si usas uno propio, cambia `contractsent` por el identificador de tu etapa en *The deal that just moved* (en `hs_v2_date_entered_contractsent`, entre las propiedades que lee), en *Really in Contract Sent, with no contract?* y en el campo `fecha_efectiva` de *Prepare contract data*; y `closedwon` en *Move the deal to Closed Won*. El identificador de tu etapa sale de HubSpot, en la configuración del embudo.\n\n**¿Correo o WhatsApp?** Sale por correo. Para mandarlo por WhatsApp abre *Prepare contract data*, campo `channel`, y en la primera línea cambia `prefiere` de `email` a `whatsapp`. Para WhatsApp el teléfono tiene que traer la lada (`+52…`) o poder completarse con la del país que traiga el contacto en HubSpot; si no se puede, ese contrato se va por correo en lugar de fallar. El correo del contacto hace falta siempre: el contrato lo lleva escrito.",
+        "content": "# Instalación (5 minutos)\n\n1. **AllSign** → Desarrolladores → API keys. Crea una llave con los permisos de documentos más `webhook:read`, `webhook:write` y `webhook:delete`. Guárdala en la credencial *AllSign API*.\n2. **HubSpot** → Configuración → Integraciones → Aplicaciones privadas. Crea una con `crm.objects.contacts` (lectura y escritura), `crm.objects.deals` (lectura y escritura), `crm.schemas.deals.read` y `files`. Guarda el token en la credencial *HubSpot App Token*.\n3. En HubSpot agrega dos **propiedades de negocio**: `allsign_document_id` (texto de una línea) y `allsign_contract_status` (desplegable con `created`, `sent`, `signed` y `error`). Un negocio marcado `error` no se reintenta solo: para reintentarlo, borra esas dos propiedades a mano. Antes de hacerlo, busca el contrato en AllSign: si ya existe, no lo reintentes, porque saldría otro y se cobraría dos veces.\n4. Sube tu contrato como **plantilla** en AllSign y pega su id `tmpl_…` en *Prepare contract data*. En ese mismo nodo, más abajo, están las que salen de ti y no del CRM: **empresa_emisora**, **emisor_nombre**, **emisor_correo**, **vigencia**, **jurisdiccion** y **objeto**. Las tres primeras van vacías a propósito: si no las llenas, AllSign rechaza el contrato con un 422 y te enteras, en vez de mandarle a tu cliente un acuerdo con un texto de ejemplo. El correo del emisor tiene que ser distinto al del cliente: la API no acepta dos firmantes con el mismo.\n5. En AllSign, dile a la plantilla dónde van las firmas. Una sola vez, con `PUT /v3/templates/{tuPlantilla}/signing` y este cuerpo:\n```json\n{\"roles\": [\n  {\"name\": \"emisor\",  \"fields\": [{\"roleName\": \"emisor\",  \"kind\": \"signature\", \"page\": 3,\n     \"rect\": {\"x\": 8,  \"y\": 30, \"width\": 35, \"height\": 7},\n     \"anchor\": \"Firma de la Parte emisora\", \"expect\": 1, \"onMiss\": \"fail\"}]},\n  {\"name\": \"cliente\", \"fields\": [{\"roleName\": \"cliente\", \"kind\": \"signature\", \"page\": 3,\n     \"rect\": {\"x\": 55, \"y\": 30, \"width\": 35, \"height\": 7},\n     \"anchor\": \"Firma de la Parte cliente\", \"expect\": 1, \"onMiss\": \"fail\"}]}\n]}\n```\nSin esto, AllSign pone las firmas al pie de la **primera** página, encima de las cláusulas. Los textos del `anchor` son los que trae el acuerdo de este repo; si usas otro documento, pon los tuyos y que aparezcan una sola vez.\nEn este repo, `examples/NDA_Plantilla_AllSign_ES.docx` es un acuerdo de confidencialidad en español con esas mismas variables.\n6. Los dos nodos de correo traen direcciones de ejemplo (`sales@example.com`) que rebotan. Conecta tu servidor de correo y pon tu remitente y tu destinatario, o bórralos.\n7. Publica el flujo. Mueve un negocio a **Contrato enviado** y velo salir. Los que ya estaban en esa etapa al publicarlo no reciben contrato.\n\n8. Abre el nodo *HubSpot calls when a deal changes* y **cambia la ruta** por algo tuyo. Viene con un texto de relleno a propósito: si la dejas, cualquiera que lea este repo puede adivinar tu dirección.\n9. En la aplicación privada, pestaña **Auth**, copia el **secreto de cliente**. No es el token `pat-…`. Pégalo en el nodo *Signature inputs*, en el campo `secreto`. Sin él, el flujo rechaza todos los avisos.\n   Si HubSpot te manda la firma nueva (`X-HubSpot-Signature-v3`), el campo `miUrl` de ese mismo nodo es obligatorio: pon la dirección pública de este webhook, la misma que pegaste en HubSpot. Sin ella, todos los avisos con firma v3 salen rechazados. Para la firma de las aplicaciones privadas, que es la v1, no hace falta.\n10. En esa misma aplicación abre la pestaña **Webhooks**, pega como URL de destino la dirección de producción de ese nodo y suscríbete a **Negocio → Propiedad modificada → Deal Stage**. No hace falta cuenta de desarrollador ni aplicación pública. El flujo tiene que estar publicado antes, si no la dirección todavía no contesta.\n\n**Por qué tanto cuidado:** esa dirección es pública y quien la conozca puede llamarla. Con ella y el número de un negocio, alguien de fuera podría mandar contratos de verdad, y cobrados. Por eso el flujo verifica la firma de HubSpot antes de mirar el contenido, y vuelve a leer el negocio en HubSpot en lugar de creerle al aviso.\n\n**Dos valores que importan más de lo que parecen.** `vigencia` tiene que traer la unidad, por ejemplo *dos años*, porque el contrato dice \"por un plazo de…\". Y `jurisdiccion` tiene que ser el domicilio de alguna de las dos empresas o el lugar donde se cumple el acuerdo: si pones una ciudad sin relación con ninguna, la sumisión a esos tribunales puede no valer.\n\n**¿Otro embudo?** Las etapas `contractsent` y `closedwon` son las del embudo que HubSpot trae de fábrica. Si usas uno propio, cambia `contractsent` por el identificador de tu etapa en *The deal that just moved* (en `hs_v2_date_entered_contractsent`, entre las propiedades que lee), en *Really in Contract Sent, with no contract?* y en el campo `fecha_efectiva` de *Prepare contract data*; y `closedwon` en *Move the deal to Closed Won*. El identificador de tu etapa sale de HubSpot, en la configuración del embudo.\n\n**¿Correo o WhatsApp?** Sale por correo. Para mandarlo por WhatsApp abre *Prepare contract data*, campo `channel`, y en la primera línea cambia `prefiere` de `email` a `whatsapp`. Para WhatsApp el teléfono tiene que traer la lada (`+52…`) o poder completarse con la del país que traiga el contacto en HubSpot; si no se puede, ese contrato se va por correo en lugar de fallar. El correo del contacto hace falta siempre: el contrato lo lleva escrito.",
         "width": 780,
         "height": 520,
         "color": 6
@@ -1654,11 +1655,6 @@
       "main": [
         [
           {
-            "node": "The events, parsed",
-            "type": "main",
-            "index": 0
-          },
-          {
             "node": "Thanks, got it",
             "type": "main",
             "index": 0
@@ -1667,6 +1663,17 @@
         [
           {
             "node": "Not HubSpot — refuse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Thanks, got it": {
+      "main": [
+        [
+          {
+            "node": "The events, parsed",
             "type": "main",
             "index": 0
           }

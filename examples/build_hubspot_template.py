@@ -189,7 +189,7 @@ if WEBHOOK:
         "path": "cambia-esto-por-algo-tuyo",
         "responseMode": "responseNode",
         "options": {"rawBody": True},
-    }, -1440, Y1, webhookId=wh("hubspot-deal-closed"))
+    }, -1920, Y1, webhookId=wh("hubspot-deal-closed"))
 
     # Con `rawBody` el cuerpo crudo llega como BINARIO, no dentro del JSON. Este
     # nodo lo pasa a texto. Hace falta el crudo byte por byte: si se vuelve a
@@ -200,7 +200,7 @@ if WEBHOOK:
         "binaryPropertyName": "data",
         "destinationKey": "cuerpo",
         "options": {},
-    }, -1200, Y1)
+    }, -1680, Y1)
 
     # Un nodo Code no puede usar `crypto`: n8n no le presta ningún módulo de Node
     # a menos que el administrador lo habilite. Por eso la firma se calcula con
@@ -229,7 +229,7 @@ if WEBHOOK:
              "value": "={{ !$json.firmaV3 || Math.abs(Date.now() - Number($json.marca)) <= 300000 }}"},
         ]},
         "options": {},
-    }, -960, Y1)
+    }, -1440, Y1)
 
     esv3 = node("Which signature version?", "n8n-nodes-base.if", 2.2, {
         "conditions": {
@@ -239,7 +239,7 @@ if WEBHOOK:
             "combinator": "and",
         },
         "options": {},
-    }, -720, Y1)
+    }, -1200, Y1)
 
     hmac3 = node("Sign it the v3 way", "n8n-nodes-base.crypto", 1, {
         "action": "hmac",
@@ -248,7 +248,7 @@ if WEBHOOK:
         "dataPropertyName": "calculada",
         "secret": "={{ $json.secreto }}",
         "encoding": "base64",
-    }, -480, Y1 - 180)
+    }, -960, Y1 - 180)
 
     hash1 = node("Sign it the v1 way", "n8n-nodes-base.crypto", 1, {
         "action": "hash",
@@ -256,7 +256,7 @@ if WEBHOOK:
         "value": "={{ $json.secreto + $json.cuerpo }}",
         "dataPropertyName": "calculada",
         "encoding": "hex",
-    }, -480, Y1 + 180)
+    }, -960, Y1 + 180)
 
     es_valida = node("Signature checks out?", "n8n-nodes-base.if", 2.2, {
         "conditions": {
@@ -267,26 +267,32 @@ if WEBHOOK:
                 {"id": "fresca", "leftValue": "={{ $json.vigente }}", "rightValue": True,
                  "operator": {"type": "boolean", "operation": "true", "singleValue": True}},
                 {"id": "cuadra",
-                 "leftValue": "={{ $json.calculada }}",
-                 "rightValue": "={{ $json.firmaV3 || $json.firmaV1 }}",
-                 "operator": {"type": "string", "operation": "equals"}},
+                 "leftValue": "={{ (() => {\n"
+                              "  const a = $json.calculada || '';\n"
+                              "  const b = $json.firmaV3 || $json.firmaV1 || '';\n"
+                              "  let diff = a.length ^ b.length;\n"
+                              "  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i % (b.length || 1));\n"
+                              "  return diff === 0;\n"
+                              "})() }}",
+                 "rightValue": True,
+                 "operator": {"type": "boolean", "operation": "true", "singleValue": True}},
             ],
             "combinator": "and",
         },
         "options": {},
-    }, -240, Y1)
+    }, -720, Y1)
 
     # HubSpot reintenta hasta diez veces en 24 horas si recibe un 4xx o 5xx, o si
     # tardas más de cinco segundos. Por eso se contesta de inmediato y el trabajo
     # sigue por su cuenta.
     ok200 = node("Thanks, got it", "n8n-nodes-base.respondToWebhook", 1.1, {
         "respondWith": "noData", "options": {"responseCode": 200},
-    }, 720, Y1 + 300)
+    }, -480, Y1)
 
     no401 = node("Not HubSpot — refuse", "n8n-nodes-base.respondToWebhook", 1.1, {
         "respondWith": "text", "responseBody": "invalid signature",
         "options": {"responseCode": 401},
-    }, 480, Y1 + 300)
+    }, -480, Y1 + 220)
 
     split1 = node("One item per event", "n8n-nodes-base.splitOut", 1, {
         "fieldToSplitOut": "eventos", "options": {},
@@ -300,7 +306,7 @@ if WEBHOOK:
              "value": "={{ $('HubSpot calls when a deal changes').item.json.body }}"},
         ]},
         "options": {},
-    }, -240, Y1 + 160)
+    }, -240, Y1)
 
     onlywon = _filter("Moved to Contract Sent?", [
         _cond("prop", "={{ $json.propertyName }}", "dealstage"),
@@ -323,9 +329,9 @@ if WEBHOOK:
 
     START_CHAIN = [(t1, crudo), (crudo, datos), (datos, esv3),
                    (hmac3, es_valida), (hash1, es_valida),
-                   (es_valida, recupera), (recupera, split1),
+                   (es_valida, ok200), (ok200, recupera), (recupera, split1),
                    (split1, onlywon), (onlywon, s1), (s1, fresh)]
-    # el cableado de las dos respuestas va más abajo, con el resto del flujo
+    # el cableado del 401 va más abajo, con el resto del flujo
     ENTRY = fresh  # el nodo que le pasa el deal al resto del flujo
 else:
     t1 = node("Every 5 minutes", "n8n-nodes-base.scheduleTrigger", 1.2,
@@ -494,7 +500,8 @@ create = allsign("Create contract in AllSign", {
             "whatsapp": "={{ $json.phone }}",
             "roleName": "cliente",
         },
-    ]},    "signatureValidations": {"verifyAutografa": True, "verifyNom151": True},
+    ]},
+    "signatureValidations": {"verifyAutografa": True, "verifyNom151": True},
     "configuration": {"idempotencyKey": clave("allsign-hubspot-create", "$json.dealId")},
 }, X1 + 1440, Y1, onError="continueErrorOutput", **REINTENTOS)
 
@@ -544,7 +551,6 @@ if WEBHOOK:
     # mala: contesta 401 y ahí termina.
     link(esv3, hmac3, 0)   # trae firma v3
     link(esv3, hash1, 1)   # solo trae la v1, que es la de las apps privadas
-    link(es_valida, ok200, 0)
     link(es_valida, no401, 1)
 link(sw, con_correo, 0)
 link(sw, con_correo, 1)
@@ -797,7 +803,8 @@ sticky(
     "```\n"
     "Sin esto, AllSign pone las firmas al pie de la **primera** página, encima de las "
     "cláusulas. Los textos del `anchor` son los que trae el acuerdo de este repo; si usas "
-    "otro documento, pon los tuyos y que aparezcan una sola vez.\n"    "En este repo, "
+    "otro documento, pon los tuyos y que aparezcan una sola vez.\n"
+    "En este repo, "
     "`examples/NDA_Plantilla_AllSign_ES.docx` es un acuerdo de confidencialidad en español "
     "con esas mismas variables.\n"
     "6. Los dos nodos de correo traen direcciones de ejemplo (`sales@example.com`) que "
@@ -809,12 +816,12 @@ sticky(
      "tuyo. Viene con un texto de relleno a propósito: si la dejas, cualquiera que lea "
      "este repo puede adivinar tu dirección.\n"
      "9. En la aplicación privada, pestaña **Auth**, copia el **secreto de cliente**. No "
-     "es el token `pat-…`. Pégalo en la primera línea del nodo *Is it really HubSpot?*, "
-     "donde dice `let secreto = ''`. Sin él, el flujo rechaza todos los avisos.\n"
-     "   Si además HubSpot te manda la firma nueva (`X-HubSpot-Signature-v3`), llena "
-     "también el campo `miUrl` de ese nodo con la dirección pública de este webhook, "
-     "la misma que pegaste en HubSpot. Para la firma de las aplicaciones privadas, que "
-     "es la v1, no hace falta.\n"
+     "es el token `pat-…`. Pégalo en el nodo *Signature inputs*, en el campo `secreto`. "
+     "Sin él, el flujo rechaza todos los avisos.\n"
+     "   Si HubSpot te manda la firma nueva (`X-HubSpot-Signature-v3`), el campo `miUrl` "
+     "de ese mismo nodo es obligatorio: pon la dirección pública de este webhook, la misma "
+     "que pegaste en HubSpot. Sin ella, todos los avisos con firma v3 salen rechazados. "
+     "Para la firma de las aplicaciones privadas, que es la v1, no hace falta.\n"
      "10. En esa misma aplicación abre la pestaña **Webhooks**, pega como URL de destino "
      "la dirección de producción de ese nodo y suscríbete a **Negocio → Propiedad "
      "modificada → Deal Stage**. No hace falta cuenta de desarrollador ni aplicación "
