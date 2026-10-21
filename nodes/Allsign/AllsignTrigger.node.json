@@ -1,0 +1,36 @@
+{
+  "node": "n8n-nodes-allsign.allsignTrigger",
+  "nodeVersion": "1.0",
+  "codexVersion": "1.0",
+  "categories": [
+    "Productivity"
+  ],
+  "alias": [
+    "signature",
+    "sign",
+    "esignature",
+    "e-signature",
+    "electronic signature",
+    "webhook",
+    "event",
+    "trigger",
+    "signed",
+    "completed",
+    "voided",
+    "expired",
+    "nom-151",
+    "nom151",
+    "constancia",
+    "signer",
+    "document",
+    "contract",
+    "legal"
+  ],
+  "resources": {
+    "primaryDocumentation": [
+      {
+        "url": "https://allsign.io/developers/docs/webhooks"
+      }
+    ]
+  }
+}
