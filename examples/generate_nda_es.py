@@ -77,8 +77,8 @@ def construir():
         ("Fecha del documento", "{{ fecha_efectiva }}"),
         ("Empresa", "{{ empresa_emisora }}"),
         ("Representante de la empresa", "{{ representante_emisor }}"),
-        ("Representante del cliente", "{{ nombre_cliente }}"),
-        ("Empresa del cliente", "{{ empresa_cliente }}"),
+        ("Cliente", "{{ empresa_cliente }}"),
+        ("Quien firma por el cliente", "{{ nombre_cliente }}"),
     ]
     for i, (etiqueta, valor) in enumerate(filas):
         celda = datos.cell(i, 0)
@@ -121,30 +121,31 @@ def construir():
 
     encabezado(1, "OBJETO Y PARTES")
     cuerpo(
-        "Este acuerdo se celebra entre {{ empresa_emisora }}, representada por "
-        "{{ representante_emisor }}, y "
-        "{{ empresa_cliente }}, representada por {{ nombre_cliente }}. Ambas "
-        "empresas se denominan conjuntamente las Partes, y cada una queda obligada en los "
-        "términos de este acuerdo."
+        "Este acuerdo se celebra entre {{ empresa_emisora }} y {{ empresa_cliente }}, que se "
+        "denominan conjuntamente las Partes, y cada una queda obligada en los términos de "
+        "este acuerdo. Lo firman {{ representante_emisor }} y {{ nombre_cliente }}, "
+        "respectivamente, cada quien en nombre propio o en representación de su Parte, "
+        "según corresponda."
     )
     cuerpo(
-        "Quien firma por cada Parte declara contar con las facultades necesarias para "
-        "representarla y obligarla, y que dichas facultades no le han sido revocadas ni "
-        "limitadas a la fecha de firma."
+        "Quien firma en representación de una Parte declara contar con las facultades "
+        "necesarias para representarla y obligarla, y que dichas facultades no le han sido "
+        "revocadas ni limitadas a la fecha de firma."
     )
     cuerpo(
         "El objeto de este acuerdo es proteger la información confidencial que las Partes se "
-        "compartan con motivo de {{ objeto }}, al que este acuerdo llama el Fin. Es recíproco: "
+        "compartan con motivo de {{ objeto }} (en adelante, el Fin). Es recíproco: "
         "cada Parte comparte "
         "información propia y recibe la de la otra."
     )
 
     encabezado(2, "QUÉ SE CONSIDERA INFORMACIÓN CONFIDENCIAL")
     cuerpo(
-        "Toda información, en cualquier forma o medio, que una Parte comparta con la otra "
-        "y que esté marcada como confidencial, o que por su naturaleza y por las circunstancias "
-        "en que se comparte deba entenderse como tal. Queda comprendida, de manera "
-        "enunciativa y no limitativa, y se considera confidencial aunque no esté marcada:"
+        "Se considera información confidencial toda información, en cualquier forma o medio, "
+        "que una Parte comparta con la otra y que esté marcada como confidencial, o que por "
+        "su naturaleza y por las circunstancias en que se comparte deba entenderse como tal. "
+        "Queda comprendida, de manera enunciativa y no limitativa, la información siguiente, "
+        "que se considera confidencial aunque no esté marcada:"
     )
     vinetas([
         "Planes de negocio, estrategias e información financiera",
@@ -254,8 +255,8 @@ def construir():
     )
     cuerpo(
         "Para su interpretación y cumplimiento, las Partes se someten a los tribunales "
-        "competentes de {{ jurisdiccion }} y renuncian a cualquier otro fuero que pudiera "
-        "corresponderles por razón de sus domicilios presentes o futuros."
+        "competentes con sede en {{ jurisdiccion }} y renuncian a cualquier otro fuero que "
+        "pudiera corresponderles por razón de sus domicilios presentes o futuros."
     )
 
     encabezado(10, "FIRMA ELECTRÓNICA", pegado=True)
@@ -282,7 +283,7 @@ def construir():
 
     cuerpo(
         "Leído el contenido de este acuerdo y enteradas las Partes de su alcance y fuerza "
-        "legal, lo firman de conformidad quienes las representan.", pegado=True
+        "legal, lo firman de conformidad.", pegado=True
     )
 
     firmas = doc.add_table(rows=2, cols=2)
@@ -292,9 +293,9 @@ def construir():
     # de la tabla de partes.
     for columna, (quien, quien_detalle) in enumerate([
         ("{{ empresa_emisora }}",
-         "Por conducto de {{ representante_emisor }}  ·  {{ correo_emisor }}\nFirma de la Parte emisora"),
+         "{{ representante_emisor }}  ·  {{ correo_emisor }}\nFirma de la Parte emisora"),
         ("{{ empresa_cliente }}",
-         "Por conducto de {{ nombre_cliente }}  ·  {{ correo_cliente }}\nFirma de la Parte cliente"),
+         "{{ nombre_cliente }}  ·  {{ correo_cliente }}\nFirma de la Parte cliente"),
     ]):
         celda = firmas.cell(0, columna)
         celda.paragraphs[0].add_run("\n\n\n_______________________________")
