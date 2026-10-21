@@ -34,7 +34,7 @@ function leerKey() {
         return readFileSync(RUTA_KEY, 'utf8').trim();
     } catch {
         console.error(`\nFalta la API key. El smoke no sabe con qué autenticarse.\n`);
-        console.error(`Contra producción: crea una key de trial en dashboard.allsign.io → API Trial,`);
+        console.error(`Contra producción: crea una key de trial en allsign.io → API Trial,`);
         console.error(`cópiala y guárdala así:\n`);
         console.error(`  pbpaste > ${RUTA_KEY} && chmod 600 ${RUTA_KEY}\n`);
         console.error(`Contra dev, con la key que ya tienes:\n`);

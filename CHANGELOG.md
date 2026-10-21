@@ -15,6 +15,10 @@ All notable changes to `n8n-nodes-allsign` will be documented in this file.
 
 - The AllSign API key used by the Trigger needs `webhook:read`, `webhook:write` and `webhook:delete` on top of `document:*`. The scopes are checked when you activate the workflow — the one moment n8n shows the error on screen — and the message names the ones that are missing.
 
+### 🐛 Fixed
+
+- **Documentation links no longer lead to a dead domain.** `docs.allsign.io` doesn't resolve, and it was the first thing someone who had just installed the node ran into: the credential description and the node catalog pointed there. They now go to `allsign.io/developers/docs`. A test checks that the credential, the catalog and the example workflow only point to `allsign.io` or `api.allsign.io`, and a CI step covers what the test can't read, such as the README.
+
 ## [0.6.0] — 2026-08-26
 
 ### 🐛 Fixed
