@@ -86,7 +86,7 @@ List documents — read-only, no body, no `Idempotency-Key`.
 
 | Field | Description |
 |:---|:---|
-| **Limit** | Max documents to return (1-100, default 20) |
+| **Limit** | Max documents to return (1-100, default 50) |
 | **Filters** (optional collection) | **Status** (lifecycle), **Scope** (Owner/Organization/Tenant/Accessible), **Search** (free text), **Starting After** / **Ending Before** (pagination cursors), **Folder ID**, **Include Total** |
 
 Only the filters you actually set are sent to the API — everything else is omitted so the API applies its own defaults (e.g. `scope=owner`).

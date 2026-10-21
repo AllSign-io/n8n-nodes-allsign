@@ -30,7 +30,7 @@ const getMockExecuteFunctions = (params: Record<string, unknown>): IExecuteFunct
 			return val;
 		},
 		getCredentials: async () => ({
-			apiKey: 'allsign_live_sk_test123',
+			apiKey: 'allsign_live_sk_dummy',
 			baseUrl: 'https://api.allsign.io',
 		}),
 		helpers: {
@@ -711,12 +711,12 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 				fileUrl: 'https://example.com/doc.pdf',
 				'signers.signerValues': [],
 				signatureValidations: {},
-				configuration: { idempotencyKey: 'order-4821-create' },
+				configuration: { idempotencyKey: 'example-order-4821' },
 			});
 
 			await node.execute.call(fn);
 			const requestOptions = mockHttpRequestWithAuthentication.mock.calls[0][1];
-			expect(requestOptions.headers).toEqual({ 'Idempotency-Key': 'order-4821-create' });
+			expect(requestOptions.headers).toEqual({ 'Idempotency-Key': 'example-order-4821' });
 		});
 
 		it('should auto-generate a UUID v4 Idempotency-Key when the user omits one (API requires it on every write)', async () => {
@@ -1075,7 +1075,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 	// List Documents — v3 GET /documents
 	// ----------------------------------------------------------
 	describe('List Documents', () => {
-		it('should GET /v3/documents with limit=20 by default, no body, no Idempotency-Key', async () => {
+		it('should GET /v3/documents with limit=50 by default, no body, no Idempotency-Key', async () => {
 			mockHttpRequestWithAuthentication.mockResolvedValueOnce({
 				object: 'list',
 				data: [{ id: 'doc_1' }, { id: 'doc_2' }],
@@ -1092,7 +1092,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			const call = mockHttpRequestWithAuthentication.mock.calls[0][1];
 			expect(call.method).toBe('GET');
 			expect(call.url).toBe('https://api.allsign.io/v3/documents');
-			expect(call.qs).toEqual({ limit: 20 });
+			expect(call.qs).toEqual({ limit: 50 });
 			expect(call.body).toBeUndefined();
 			expect(call.headers).toBeUndefined();
 
@@ -1140,7 +1140,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 
 			await node.execute.call(fn);
 			const call = mockHttpRequestWithAuthentication.mock.calls[0][1];
-			expect(call.qs).toEqual({ limit: 20 });
+			expect(call.qs).toEqual({ limit: 50 });
 		});
 
 		it('should throw NodeApiError on API failure', async () => {
@@ -1474,7 +1474,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 				signatureValidations: {},
 			});
 			(fn as unknown as Record<string, unknown>).getCredentials = async () => ({
-				apiKey: 'allsign_live_sk_test123',
+				apiKey: 'allsign_live_sk_dummy',
 				baseUrl: 'https://api.allsign.io/',
 			});
 
@@ -1496,7 +1496,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 				signatureValidations: {},
 			});
 			(fn as unknown as Record<string, unknown>).getCredentials = async () => ({
-				apiKey: 'allsign_trial_sk_dev456',
+				apiKey: 'allsign_trial_sk_dummy',
 				baseUrl: 'http://localhost:8000',
 			});
 

@@ -6,7 +6,8 @@ All notable changes to `n8n-nodes-allsign` will be documented in this file.
 
 ### 🐛 Fixed
 
-- **El paquete no pasaba el escáner que n8n le corre a los nodos de la comunidad**, así que no se podía publicar al catálogo. Dos errores: el build emitía un `.d.ts` junto a la credencial y el escáner lo lee como un archivo de credencial mal nombrado; y la descarga de un archivo por URL usaba `httpRequest` dentro del execute, que la regla marca como autenticación a mano aunque esa descarga no lleve credencial. Se deja de emitir declaraciones de tipos, que el paquete no publica, y la descarga vive en su propia función. `npm run scan` empaqueta y escanea igual que n8n, y corre en CI.
+- **The package passes the scanner n8n runs before verifying a community node.** n8n lints two things: the published tarball, and the source of the commit that the npm provenance attests — tests included, with `eslint-disable` comments ignored. The source had eight errors that only the second pass sees. *List Documents* now defaults `Limit` to 50 with n8n's standard description (the API accepts 1–100 either way, and the node always sends the value), a validation error raised inside the node is re-thrown as a `NodeOperationError`, test fixtures no longer look like real API keys, and the download of a file by URL lives in its own function so it isn't read as hand-rolled authentication. The build no longer emits `.d.ts` files, which the package never needed.
+- **`npm run scan` runs both of n8n's passes** with the scanner version pinned, and CI and the publish workflow run it, so a release that would fail verification fails before it reaches npm — a published version can't be replaced.
 
 ## [0.6.0] — 2026-08-26
 
