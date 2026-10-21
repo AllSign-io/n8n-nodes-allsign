@@ -87,18 +87,6 @@
               "name": "marca",
               "type": "string",
               "value": "={{ $('HubSpot calls when a deal changes').item.json.headers['x-hubspot-request-timestamp'] ?? '' }}"
-            },
-            {
-              "id": "b6",
-              "name": "aFirmar",
-              "type": "string",
-              "value": "={{ 'POST' + $json.miUrl + $json.cuerpo + $json.marca }}"
-            },
-            {
-              "id": "b7",
-              "name": "vigente",
-              "type": "boolean",
-              "value": "={{ !$json.firmaV3 || Math.abs(Date.now() - Number($json.marca)) <= 300000 }}"
             }
           ]
         },
@@ -151,7 +139,7 @@
       "parameters": {
         "action": "hmac",
         "type": "SHA256",
-        "value": "={{ $json.aFirmar }}",
+        "value": "={{ 'POST' + $json.miUrl + $json.cuerpo + $json.marca }}",
         "dataPropertyName": "calculada",
         "secret": "={{ $json.secreto }}",
         "encoding": "base64"
@@ -204,7 +192,7 @@
             },
             {
               "id": "fresca",
-              "leftValue": "={{ $json.vigente }}",
+              "leftValue": "={{ !$json.firmaV3 || Math.abs(Date.now() - Number($json.marca)) <= 300000 }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",

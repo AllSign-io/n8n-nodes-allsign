@@ -221,12 +221,6 @@ if WEBHOOK:
              "value": "={{ $('HubSpot calls when a deal changes').item.json.headers['x-hubspot-signature-v3'] ?? '' }}"},
             {"id": "b5", "name": "marca", "type": "string",
              "value": "={{ $('HubSpot calls when a deal changes').item.json.headers['x-hubspot-request-timestamp'] ?? '' }}"},
-            # Lo que HubSpot firma en la v3: método, dirección, cuerpo y hora.
-            {"id": "b6", "name": "aFirmar", "type": "string",
-             "value": "={{ 'POST' + $json.miUrl + $json.cuerpo + $json.marca }}"},
-            # La v3 caduca a los cinco minutos. La v1 no trae hora, así que pasa.
-            {"id": "b7", "name": "vigente", "type": "boolean",
-             "value": "={{ !$json.firmaV3 || Math.abs(Date.now() - Number($json.marca)) <= 300000 }}"},
         ]},
         "options": {},
     }, -1440, Y1)
@@ -244,7 +238,8 @@ if WEBHOOK:
     hmac3 = node("Sign it the v3 way", "n8n-nodes-base.crypto", 1, {
         "action": "hmac",
         "type": "SHA256",
-        "value": "={{ $json.aFirmar }}",
+        # Lo que HubSpot firma en la v3: método, dirección, cuerpo y hora.
+        "value": "={{ 'POST' + $json.miUrl + $json.cuerpo + $json.marca }}",
         "dataPropertyName": "calculada",
         "secret": "={{ $json.secreto }}",
         "encoding": "base64",
@@ -264,7 +259,10 @@ if WEBHOOK:
             "conditions": [
                 {"id": "hay", "leftValue": "={{ $json.secreto }}", "rightValue": "",
                  "operator": {"type": "string", "operation": "notEmpty", "singleValue": True}},
-                {"id": "fresca", "leftValue": "={{ $json.vigente }}", "rightValue": True,
+                # La v3 caduca a los cinco minutos. La v1 no trae hora, así que pasa.
+                {"id": "fresca",
+                 "leftValue": "={{ !$json.firmaV3 || Math.abs(Date.now() - Number($json.marca)) <= 300000 }}",
+                 "rightValue": True,
                  "operator": {"type": "boolean", "operation": "true", "singleValue": True}},
                 {"id": "cuadra",
                  "leftValue": "={{ (() => {\n"
