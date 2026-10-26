@@ -36,8 +36,8 @@ npm test
 
 ## Login Credentials (local n8n)
 
-- **Email:** `erikasofia.garciabalderas@gmail.com`
-- **Password:** `!Bz!nt$t$4`
+Your own local n8n account. Never commit them: set them up on first run
+at http://localhost:5678 and keep them in your password manager.
 
 ## Notes
 
