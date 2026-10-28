@@ -38,10 +38,17 @@ attached to the deal and it moves to *Closed won*.
 
 ## How to set up
 
-Follow the sticky notes: create the deal properties, upload your contract as an
-AllSign template, tell AllSign where the signature boxes go, paste your public
-webhook URL and your HubSpot client secret, and subscribe the private app to the
-deal stage change.
+The sticky note top-left has the seven steps: install the node, add the two
+credentials, create two deal properties in HubSpot, upload your contract as an
+AllSign template and paste its id, fill in the issuer fields, tell AllSign where
+the signature boxes go, and point HubSpot at the webhook.
+
+That last step is the one to read twice: change the webhook path, paste the
+private app's client secret and your public webhook URL into *Signature inputs*,
+and subscribe the app to the deal stage change. The address is public, and the
+signature check is what keeps a stranger from sending real, billed contracts
+through it. Steps 5 to 7 are written out in full in
+[docs/hubspot-template-setup.md](https://github.com/AllSign-io/n8n-nodes-allsign/blob/main/docs/hubspot-template-setup.md).
 
 ## How to customize
 

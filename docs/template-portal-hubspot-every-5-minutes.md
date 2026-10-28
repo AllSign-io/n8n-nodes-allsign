@@ -37,11 +37,17 @@ not signed get a reminder.
 
 ## How to set up
 
-The sticky notes on the canvas walk through it: create four deal properties in
-HubSpot, upload your contract as an AllSign template and paste its id, tell
-AllSign where the signature boxes go, and fill in the issuer fields. The
-repository ships a Spanish NDA (`examples/NDA_Plantilla_AllSign_ES.docx`) you
-can use as the contract.
+The sticky note top-left has the six steps: install the node, add the two
+credentials, create two deal properties in HubSpot, upload your contract as an
+AllSign template and paste its id, fill in the issuer fields, and tell AllSign
+where the signature boxes go.
+
+The last two steps need a little more than a sticky note holds — which issuer
+fields AllSign will not accept empty, and the request that places the signature
+boxes — so they are written out in
+[docs/hubspot-template-setup.md](https://github.com/AllSign-io/n8n-nodes-allsign/blob/main/docs/hubspot-template-setup.md).
+The repository also ships a Spanish NDA
+(`examples/NDA_Plantilla_AllSign_ES.docx`) you can use as the contract.
 
 ## How to customize
 
