@@ -135,7 +135,7 @@ sticky(
     "Every 5 minutes, the HubSpot deals that just reached **Contract sent** with no "
     "contract yet. It builds the document from your AllSign template and emails the "
     "invitation. Deals already in that stage when you activate are skipped.",
-    -240, Y1 - 190, 460, 150, color=7)
+    -240, Y1 - 200, 460, 180, color=7)
 
 t1 = node("Every 5 minutes", "n8n-nodes-base.scheduleTrigger", 1.2,
           {"rule": {"interval": [{"field": "minutes", "minutesInterval": 5}]}}, -240, Y1)
@@ -550,34 +550,33 @@ link(loop, remind, 1)  # output "loop"
 # ───────────────────────── setup note ─────────────────────────
 sticky(
     "## Close HubSpot deals with a NOM-151 compliant e-signature\n\n"
-    "> **Self-hosted n8n only.** This template uses the AllSign community node "
-    "`n8n-nodes-allsign`, and community nodes cannot run on n8n Cloud.\n\n"
+    "> **Self-hosted n8n only.** The AllSign community node cannot run on n8n "
+    "Cloud.\n\n"
     "### How it works\n\n"
     "Every 5 minutes the workflow looks for HubSpot deals that moved to **Contract sent** "
-    "and have no contract yet, builds the contract from your AllSign template and emails "
-    "the signing invitation. The contract id is written back on the deal before the "
-    "invitation goes out, so a retry never creates \u2014 or charges for \u2014 a second "
+    "and have no contract yet. The contract is built from your AllSign template and the "
+    "signing invitation goes out by email. The contract id is written back on the deal "
+    "before the invitation is sent, so a retry never creates \u2014 or charges for \u2014 a second "
     "contract. When everyone has signed, the signed PDF and the NOM-151 certificate are "
-    "attached to the deal and it moves to **Closed won**. Signers who have not signed get "
-    "a weekday reminder, and a run that breaks leaves the deal marked `error` and emails "
-    "the team.\n\n"
+    "attached to the deal and it moves to **Closed won**. Signers who have not signed get a "
+    "weekday reminder; a failed run marks the deal `error` and emails the team.\n\n"
     "### Setup\n\n"
     "1. Install `n8n-nodes-allsign` on your n8n.\n"
-    "2. **AllSign** \u2192 Developers \u2192 API keys: a key with the document scopes plus "
-    "`webhook:read`, `webhook:write` and `webhook:delete`, saved in the *AllSign API* "
+    "2. **AllSign** \u2192 Developers \u2192 API keys: document scopes plus "
+    "`webhook:read`, `webhook:write`, `webhook:delete` \u2192 *AllSign API* "
     "credential.\n"
     "3. **HubSpot** \u2192 a private app with contacts and deals read/write, "
-    "`crm.schemas.deals.read` and `files`, saved in *HubSpot App Token*.\n"
-    "4. Add two deal properties: `allsign_document_id` (single-line text) and "
+    "`crm.schemas.deals.read`, `files` \u2192 *HubSpot App Token*.\n"
+    "4. Add two deal properties: `allsign_document_id` (text) and "
     "`allsign_contract_status` (dropdown: `created`, `sent`, `signed`, `error`).\n"
     "5. Upload your contract to AllSign as a template, paste its `tmpl_\u2026` id in "
-    "*Prepare contract data* and fill the issuer fields under it.\n"
-    "6. Tell AllSign where the signature boxes go, and point the two email nodes at your "
-    "own sender.\n\n"
-    "Steps 5 and 6 in full, with the request that places the signature boxes and the "
-    "fields that cannot be left empty: "
+    "*Prepare contract data* and fill the issuer fields.\n"
+    "6. Tell AllSign where the signature boxes go, and point the email nodes at your own "
+    "sender.\n"
+    "\n"
+    "All of this in full: "
     "[docs/hubspot-template-setup.md](https://github.com/AllSign-io/n8n-nodes-allsign/blob/main/docs/hubspot-template-setup.md)",
-    -240, Y1 - 1100, 740, 860, color=1)
+    -240, Y1 - 1180, 740, 940, color=1)
 
 workflow = {
     "name": "Close HubSpot deals with NOM-151 compliant e-signature, by email or WhatsApp",
