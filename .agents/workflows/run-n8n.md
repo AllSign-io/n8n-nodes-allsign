@@ -36,11 +36,11 @@ npm test
 
 ## Login Credentials (local n8n)
 
-- **Email:** `erikasofia.garciabalderas@gmail.com`
-- **Password:** `!Bz!nt$t$4`
+Your own local n8n account. Never commit them: set them up on first run
+at http://localhost:5678 and keep them in your password manager.
 
 ## Notes
 
-- The node is linked via symlink from `~/.n8n/custom/node_modules/n8n-nodes-allsign` → project directory
+- The node is linked via symlink from `~/.n8n/nodes/node_modules/n8n-nodes-allsign` → project directory
 - n8n discovers it automatically from the `n8n` field in `package.json`
-- If you ever see **two AllSign nodes** in n8n, run `./dev.sh` — it automatically cleans duplicate symlinks
+- If you ever see **two AllSign nodes** in n8n, run `./dev.sh` — it removes any other installed copy of the node (symlinks or real directories) and keeps only the link to this checkout
