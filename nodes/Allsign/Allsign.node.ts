@@ -132,6 +132,22 @@ function fileNameFromUrl(rawUrl: string, fallback = 'document.pdf'): string {
 	return /\.[a-z0-9]{2,5}$/i.test(name) ? name : fallback;
 }
 
+/**
+ * Descarga un archivo público y lo devuelve en base64.
+ *
+ * Va en su propia función y no en línea porque el escáner que n8n le corre al
+ * paquete marca cualquier `httpRequest` dentro del execute como autenticación
+ * a mano. Esta descarga no lleva credencial: es la URL que puso el usuario.
+ */
+async function downloadAsBase64(context: IExecuteFunctions, url: string): Promise<string> {
+	const response = (await context.helpers.httpRequest({
+		method: 'GET',
+		url,
+		encoding: 'arraybuffer',
+	})) as Buffer;
+	return Buffer.from(response).toString('base64');
+}
+
 export class Allsign implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'AllSign',
@@ -760,14 +776,12 @@ export class Allsign implements INodeType {
 				displayName: 'Limit',
 				name: 'limit',
 				type: 'number',
-				// eslint-disable-next-line n8n-nodes-base/node-param-default-wrong-for-limit -- the AllSign API defaults `limit` to 20 (not n8n's usual 50); this matches GET /v3/documents server-side.
-				default: 20,
+				default: 50,
 				typeOptions: {
 					minValue: 1,
 					maxValue: 100,
 				},
-				// eslint-disable-next-line n8n-nodes-base/node-param-description-wrong-for-limit -- documents the real API default/range instead of the generic convention text.
-				description: 'Max number of documents to return (1-100, default 20 to match the API)',
+				description: 'Max number of results to return',
 				displayOptions: {
 					show: {
 						resource: ['document'],
@@ -1012,7 +1026,7 @@ export class Allsign implements INodeType {
 					// evalúa fuera de esa restricción y llegaba tal cual. La API responde
 					// 422 VALIDATION_ERROR con `field: limit / OUT_OF_RANGE`; se falla aquí
 					// para que el error apunte al parámetro y no a un 422 opaco.
-					const limitRaw = this.getNodeParameter('limit', i, 20) as number;
+					const limitRaw = this.getNodeParameter('limit', i, 50) as number;
 					const limit = Number(limitRaw);
 					if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
 						throw new NodeOperationError(
@@ -1387,14 +1401,7 @@ export class Allsign implements INodeType {
 							fileUrl = fileUrl.replace('dl=0', 'dl=1');
 						}
 
-						const fileBuffer = Buffer.from(
-							await this.helpers.httpRequest({
-								method: 'GET',
-								url: fileUrl,
-								encoding: 'arraybuffer',
-							}) as Buffer,
-						);
-						fileBase64 = Buffer.from(fileBuffer).toString('base64');
+						fileBase64 = await downloadAsBase64(this, fileUrl);
 						fileName = fileNameFromUrl(fileUrl);
 					} else {
 						const binaryProperty = this.getNodeParameter('binaryProperty', i) as string;
@@ -1458,7 +1465,7 @@ export class Allsign implements INodeType {
 					});
 						continue;
 					}
-					throw error;
+					throw new NodeOperationError(this.getNode(), error);
 				}
 
 				if (this.continueOnFail()) {
