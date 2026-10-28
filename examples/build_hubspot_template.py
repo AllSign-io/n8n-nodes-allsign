@@ -131,17 +131,11 @@ def note_body(deal_id_expr, body_expr, attachments_expr=None):
 # ───────────────────────── FLOW 1 — Contrato enviado → send contract ─────────────────────────
 Y1 = 300
 sticky(
-    "# 1 · El negocio avanza → sale el contrato\n\n"
-    "Cada 5 minutos el flujo le pregunta a HubSpot por los negocios en **Contrato "
-    "enviado** que todavía no tienen contrato de AllSign, arma el documento con tu "
-    "plantilla y se lo manda al contacto. Mover el negocio a esa etapa es justo lo que "
-    "el vendedor ya hace cuando manda un contrato. Los negocios que ya estaban en esa "
-    "etapa cuando publicaste el flujo no reciben contrato: solo los que entran después.\n\n"
-    "La invitación va por **correo**. Si tu equipo prefiere **WhatsApp**, cámbialo en "
-    "*Prepare contract data* (la nota de instalación dice cómo). El negocio guarda el id y "
-    "el estado del contrato (`allsign_document_id`, `allsign_contract_status`) para no "
-    "mandarlo dos veces.",
-    -80, Y1 - 420, 620, 340, color=4)
+    "### 1 \u00b7 Deal moves \u2192 contract goes out\n\n"
+    "Every 5 minutes, the HubSpot deals that just reached **Contract sent** with no "
+    "contract yet. It builds the document from your AllSign template and emails the "
+    "invitation. Deals already in that stage when you activate are skipped.",
+    -240, Y1 - 190, 460, 150, color=7)
 
 t1 = node("Every 5 minutes", "n8n-nodes-base.scheduleTrigger", 1.2,
           {"rule": {"interval": [{"field": "minutes", "minutesInterval": 5}]}}, -240, Y1)
@@ -365,16 +359,11 @@ link(send, failed, 1)
 # ───────────────────────── FLOW 2 — signed → close the loop ─────────────────────────
 Y2 = 1100
 sticky(
-    "# 2 · Ya firmaron → la evidencia llega al negocio\n\n"
-    "El **AllSign Trigger** registra un webhook en tu cuenta de AllSign y se dispara con "
-    "`document.completed`. El flujo busca el negocio por el id del contrato, baja el PDF "
-    "firmado y la **constancia NOM-151**, los sube a HubSpot, los deja adjuntos en una nota "
-    "del negocio, lo marca como **firmado** y lo mueve a **Cierre ganado**: hasta que "
-    "firman, el negocio no está ganado. Si prefieres mover el embudo a mano, borra el "
-    "nodo *Move the deal to Closed Won* y lo demás sigue igual.\n\n"
-    "Tu llave de AllSign necesita los permisos `webhook:read`, `webhook:write` y "
-    "`webhook:delete` para que el disparador se registre y limpie lo suyo al final.",
-    -80, Y2 - 440, 620, 360, color=4)
+    "### 2 \u00b7 Signed \u2192 evidence on the deal\n\n"
+    "The **AllSign Trigger** fires on `document.completed`. It finds the deal, downloads "
+    "the signed PDF and the NOM-151 certificate, attaches both to a deal note, marks it "
+    "**signed** and moves it to **Closed won**.",
+    -240, Y2 - 190, 460, 150, color=7)
 
 trig = node("Contract signed", "n8n-nodes-allsign.allsignTrigger", 1, {
     "events": ["document.completed"],
@@ -478,17 +467,11 @@ notify = node("Tell the team", "n8n-nodes-base.emailSend", 2.1, {
 
 # ── Error branch: one place to notice a run that broke ──────────────────
 sticky(
-    "# Si algo truena\n\n"
-    "El **Error Trigger** avisa cuando una corrida termina en error: una credencial mala, "
-    "AllSign caído, HubSpot que corta por exceso de llamadas. Cuando un contrato no sale "
-    "(el negocio no tiene contacto, el contacto no tiene correo, o AllSign o HubSpot "
-    "siguen fallando después de cinco intentos), el negocio queda marcado `error` y la "
-    "corrida termina en error a propósito para que el aviso salga. Lo mismo si la "
-    "evidencia de un contrato firmado no llega en 15 minutos.\n\n"
-    "Solo avisa de las corridas del flujo publicado, no de las que lanzas a mano desde el "
-    "editor. Mándalo a donde de verdad lo veas: si prefieres tu chat, cambia el nodo de "
-    "correo por el de tu herramienta.",
-    -80, Y2 + 520, 560, 260, color=3)
+    "### If a run breaks\n\n"
+    "The **Error Trigger** catches failed runs: a bad credential, AllSign down, a HubSpot "
+    "rate limit. A contract that cannot go out leaves the deal marked `error` and fails "
+    "the run on purpose, so the notice is sent. Published runs only.",
+    -240, Y2 + 700, 460, 170, color=7)
 
 err = node("Something failed", "n8n-nodes-base.errorTrigger", 1, {}, 0, Y2 + 900)
 err_msg = node("Report the failure", "n8n-nodes-base.emailSend", 2.1, {
@@ -511,14 +494,11 @@ link(ready, wait_ev, 1)
 # ───────────────────────── FLOW 3 — daily reminders ─────────────────────────
 Y3 = 2600
 sticky(
-    "# 3 · Recordatorio diario a quien falta por firmar\n\n"
-    "De lunes a viernes a las 9:00, hora de la Ciudad de México (la zona se cambia en la "
-    "configuración del flujo), el flujo toma los negocios cuyo contrato sigue en **enviado**, le pregunta "
-    "a AllSign quién falta y le manda un recordatorio a cada uno, por el mismo medio que la "
-    "invitación.\n\n"
-    "AllSign permite un recordatorio por firmante cada 4 horas y 10 llamadas por minuto: por "
-    "eso salen de uno en uno con una pausa, y uno rechazado no detiene la corrida.",
-    -80, Y3 - 400, 620, 320, color=4)
+    "### 3 \u00b7 Daily reminder to whoever is missing\n\n"
+    "Weekdays at 9:00, America/Mexico_City. It takes the deals whose contract is still "
+    "**sent**, asks AllSign who has not signed and reminds each one. AllSign allows one "
+    "reminder per signer every 4 hours, so they go out one at a time.",
+    -240, Y3 - 190, 460, 150, color=7)
 
 t3 = node("Every day at 9:00", "n8n-nodes-base.scheduleTrigger", 1.2,
           {"rule": {"interval": [{"field": "cronExpression", "expression": "0 9 * * 1-5"}]}}, 0, Y3)
@@ -569,67 +549,35 @@ link(loop, remind, 1)  # output "loop"
 
 # ───────────────────────── setup note ─────────────────────────
 sticky(
-    "# Instalación (5 minutos)\n\n"
-    "1. **AllSign** → Desarrolladores → API keys. Crea una llave con los permisos de "
-    "documentos más `webhook:read`, `webhook:write` y `webhook:delete`. Guárdala en la "
-    "credencial *AllSign API*.\n"
-    "2. **HubSpot** → Configuración → Integraciones → Aplicaciones privadas. Crea una con "
-    "`crm.objects.contacts` (lectura y escritura), `crm.objects.deals` (lectura y "
-    "escritura), `crm.schemas.deals.read` y `files`. Guarda el token en la credencial "
-    "*HubSpot App Token*.\n"
-    "3. En HubSpot agrega dos **propiedades de negocio**: `allsign_document_id` (texto de "
-    "una línea) y `allsign_contract_status` (desplegable con `created`, `sent`, `signed` "
-    "y `error`). Un negocio marcado `error` no se reintenta solo: para reintentarlo, borra "
-    "esas dos propiedades a mano. Antes de hacerlo, busca el contrato en AllSign: si ya "
-    "existe, no lo reintentes, porque saldría otro y se cobraría dos veces.\n"
-    "4. Sube tu contrato como **plantilla** en AllSign y pega su id `tmpl_…` en *Prepare "
-    "contract data*. En ese mismo nodo, más abajo, están las que salen de ti y no del "
-    "CRM: **empresa_emisora**, **emisor_nombre**, **emisor_correo**, **vigencia**, "
-    "**jurisdiccion** y **objeto**. Las tres primeras van vacías a propósito: si no las "
-    "llenas, AllSign rechaza el contrato con un 422 y te enteras, en vez de mandarle a tu "
-    "cliente un acuerdo con un texto de ejemplo. El correo del emisor tiene que ser "
-    "distinto al del cliente: la API no acepta dos firmantes con el mismo.\n"
-    "5. En AllSign, dile a la plantilla dónde van las firmas. Una sola vez, con "
-    "`PUT /v3/templates/{tuPlantilla}/signing` y este cuerpo:\n"
-    "```json\n"
-    "{\"roles\": [\n"
-    "  {\"name\": \"emisor\",  \"fields\": [{\"roleName\": \"emisor\",  \"kind\": \"signature\", \"page\": 3,\n"
-    "     \"rect\": {\"x\": 8,  \"y\": 30, \"width\": 35, \"height\": 7},\n"
-    "     \"anchor\": \"Firma de la Parte emisora\", \"expect\": 1, \"onMiss\": \"fail\"}]},\n"
-    "  {\"name\": \"cliente\", \"fields\": [{\"roleName\": \"cliente\", \"kind\": \"signature\", \"page\": 3,\n"
-    "     \"rect\": {\"x\": 55, \"y\": 30, \"width\": 35, \"height\": 7},\n"
-    "     \"anchor\": \"Firma de la Parte cliente\", \"expect\": 1, \"onMiss\": \"fail\"}]}\n"
-    "]}\n"
-    "```\n"
-    "Sin esto, AllSign pone las firmas al pie de la **primera** página, encima de las "
-    "cláusulas. Los textos del `anchor` son los que trae el acuerdo de este repo; si usas "
-    "otro documento, pon los tuyos y que aparezcan una sola vez.\n"
-    "En este repo, "
-    "`examples/NDA_Plantilla_AllSign_ES.docx` es un acuerdo de confidencialidad en español "
-    "con esas mismas variables.\n"
-    "6. Los dos nodos de correo traen direcciones de ejemplo (`sales@example.com`) que "
-    "rebotan. Conecta tu servidor de correo y pon tu remitente y tu destinatario, o "
-    "bórralos.\n"
-    "7. Publica el flujo. Mueve un negocio a **Contrato enviado** y velo salir. Los que ya "
-    "estaban en esa etapa al publicarlo no reciben contrato.\n\n"
-    "**Dos valores que importan más de lo que parecen.** `vigencia` tiene que traer la "
-    "unidad, por ejemplo *dos años*, porque el contrato dice \"por un plazo de…\". Y "
-    "`jurisdiccion` tiene que ser el domicilio de alguna de las dos empresas o el lugar "
-    "donde se cumple el acuerdo: si pones una ciudad sin relación con ninguna, la "
-    "sumisión a esos tribunales puede no valer.\n\n"
-    "**¿Otro embudo?** Las etapas `contractsent` y `closedwon` son las del embudo que "
-    "HubSpot trae de fábrica. Si usas uno propio, cambia `contractsent` por el "
-    "identificador de tu etapa en *Deals ready for their contract* (en el filtro de la "
-    "etapa, en `" + ENTRO_A_LA_ETAPA + "` y en las propiedades que lee) y en el campo "
-    "`fecha_efectiva` de *Prepare contract data*; y `closedwon` en *Move the deal to Closed "
-    "Won*. El identificador de tu etapa sale de HubSpot, en la configuración del embudo.\n\n"
-    "**¿Correo o WhatsApp?** Sale por correo. Para mandarlo por WhatsApp abre *Prepare "
-    "contract data*, campo `channel`, y en la primera línea cambia `prefiere` de `email` a "
-    "`whatsapp`. Para WhatsApp el teléfono tiene que traer la lada (`+52…`) o poder "
-    "completarse con la del país que traiga el contacto en HubSpot; si no se puede, ese "
-    "contrato se va por correo en lugar de fallar. El correo del contacto hace falta "
-    "siempre: el contrato lo lleva escrito.",
-    620, Y1 - 560, 780, 520, color=6)
+    "## Close HubSpot deals with a NOM-151 compliant e-signature\n\n"
+    "> **Self-hosted n8n only.** This template uses the AllSign community node "
+    "`n8n-nodes-allsign`, and community nodes cannot run on n8n Cloud.\n\n"
+    "### How it works\n\n"
+    "Every 5 minutes the workflow looks for HubSpot deals that moved to **Contract sent** "
+    "and have no contract yet, builds the contract from your AllSign template and emails "
+    "the signing invitation. The contract id is written back on the deal before the "
+    "invitation goes out, so a retry never creates \u2014 or charges for \u2014 a second "
+    "contract. When everyone has signed, the signed PDF and the NOM-151 certificate are "
+    "attached to the deal and it moves to **Closed won**. Signers who have not signed get "
+    "a weekday reminder, and a run that breaks leaves the deal marked `error` and emails "
+    "the team.\n\n"
+    "### Setup\n\n"
+    "1. Install `n8n-nodes-allsign` on your n8n.\n"
+    "2. **AllSign** \u2192 Developers \u2192 API keys: a key with the document scopes plus "
+    "`webhook:read`, `webhook:write` and `webhook:delete`, saved in the *AllSign API* "
+    "credential.\n"
+    "3. **HubSpot** \u2192 a private app with contacts and deals read/write, "
+    "`crm.schemas.deals.read` and `files`, saved in *HubSpot App Token*.\n"
+    "4. Add two deal properties: `allsign_document_id` (single-line text) and "
+    "`allsign_contract_status` (dropdown: `created`, `sent`, `signed`, `error`).\n"
+    "5. Upload your contract to AllSign as a template, paste its `tmpl_\u2026` id in "
+    "*Prepare contract data* and fill the issuer fields under it.\n"
+    "6. Tell AllSign where the signature boxes go, and point the two email nodes at your "
+    "own sender.\n\n"
+    "Steps 5 and 6 in full, with the request that places the signature boxes and the "
+    "fields that cannot be left empty: "
+    "[docs/hubspot-template-setup.md](https://github.com/AllSign-io/n8n-nodes-allsign/blob/main/docs/hubspot-template-setup.md)",
+    -240, Y1 - 1100, 740, 860, color=1)
 
 workflow = {
     "name": "Close HubSpot deals with NOM-151 compliant e-signature, by email or WhatsApp",
