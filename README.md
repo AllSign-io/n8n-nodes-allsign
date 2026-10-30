@@ -227,10 +227,15 @@ n8n-nodes-allsign/
 │       ├── Allsign.node.test.ts         # Unit tests
 │       └── allsign.svg                  # Node icon
 ├── examples/
-│   ├── NDA_Automation_AllSign_Workflow.json  # Example workflow
-│   └── NDA_Template_AllSign.docx            # DOCX template with variables
+│   ├── NDA_Automation_AllSign_Workflow.json      # Example workflow
+│   ├── NDA_Template_AllSign.docx                 # DOCX template with variables
+│   ├── NDA_Plantilla_AllSign_ES.docx             # Spanish NDA with the template variables
+│   ├── HubSpot_Closed_Won_AllSign_Contract.json  # HubSpot → AllSign, every 5 minutes
+│   ├── HubSpot_Closed_Won_AllSign_Contract_Realtime.json  # same, HubSpot calls us
+│   └── build_hubspot_template.py                 # Generator for both templates
 ├── docs/
-│   └── template-portal-description.md   # n8n template portal description
+│   ├── template-portal-description.md   # n8n template portal description
+│   └── hubspot-template-setup.md        # Full setup for the HubSpot template
 ├── package.json
 ├── tsconfig.json
 └── jest.config.js
