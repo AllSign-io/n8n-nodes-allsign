@@ -5,7 +5,13 @@ not fit on a sticky note: the request that places the signature boxes, the
 fields AllSign will not accept empty, and what to change when your pipeline is
 not the default one.
 
-Template: `examples/HubSpot_Closed_Won_AllSign_Contract.json`.
+Two templates share this setup:
+
+- `examples/HubSpot_Closed_Won_AllSign_Contract.json` — asks HubSpot every 5
+  minutes.
+- `examples/HubSpot_Closed_Won_AllSign_Contract_Realtime.json` — HubSpot calls
+  the workflow the moment the deal moves. Steps 1 to 6 are the same; it adds
+  [step 7](#7--the-real-time-variant-only).
 
 > **Self-hosted n8n only.** The template uses the AllSign community node
 > (`n8n-nodes-allsign`), and community nodes cannot run on n8n Cloud.
@@ -92,12 +98,39 @@ Activate the workflow, move a deal to **Contract sent** and watch it go. Deals
 that were already in that stage when you activated do not get a contract: only
 the ones that enter afterwards.
 
+## 7 · The real-time variant only
+
+**Change the webhook path.** Open *HubSpot calls when a deal changes* and
+replace the path with something of your own. It ships with filler on purpose: if
+you leave it, anyone reading this repository can guess your address.
+
+**Paste the client secret.** In the private app, tab **Auth**, copy the *client
+secret* — not the `pat-…` token — and paste it into *Signature inputs*, field
+`secreto`. Without it the workflow rejects every call.
+
+If HubSpot sends you the newer signature (`X-HubSpot-Signature-v3`), the `miUrl`
+field of that same node is required: put the public address of this webhook, the
+same one you pasted into HubSpot. Without it every v3-signed call is rejected.
+The private-app signature, which is v1, does not need it.
+
+**Subscribe to the event.** In that same app, open the **Webhooks** tab, paste
+the production URL of the webhook node as the target and subscribe to **Deal →
+Property changed → Deal Stage**. No developer account and no public app needed.
+The workflow has to be active first, or the address does not answer yet.
+
+**Why the care.** That address is public and anyone who knows it can call it.
+With it and a deal id, an outsider could send real contracts, and they would be
+billed. That is why the workflow verifies the HubSpot signature before looking at
+the content, and re-reads the deal in HubSpot instead of trusting the call.
+
 ## Not the default pipeline?
 
 The stages `contractsent` and `closedwon` belong to the pipeline HubSpot ships
 with. With your own pipeline, replace `contractsent` with your stage id in
-*Deals ready for their contract* (in the stage filter, in
-`hs_v2_date_entered_contractsent` and in the properties it reads) and in the
+the node that reads the deal — *Deals ready for their contract* in the
+every-5-minutes template, *The deal that just moved* and *Really in Contract
+Sent, with no contract?* in the real-time one, in the stage filter, in
+`hs_v2_date_entered_contractsent` and in the properties it reads — and in the
 `fecha_efectiva` field of *Prepare contract data*; and `closedwon` in *Move the
 deal to Closed Won*. Your stage id comes from HubSpot, in the pipeline settings.
 
