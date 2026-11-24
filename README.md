@@ -234,6 +234,7 @@ n8n-nodes-allsign/
 │   ├── HubSpot_Closed_Won_AllSign_Contract_Realtime.json  # HubSpot, real time
 │   └── build_hubspot_template.py             # Generator for both HubSpot workflows
 ├── docs/
+│   ├── hubspot-template-setup.md                   # Full setup for the HubSpot templates
 │   ├── template-portal-nda-form.md                 # Portal text, NDA form
 │   ├── template-portal-hubspot-every-5-minutes.md  # Portal text, HubSpot poll
 │   └── template-portal-hubspot-real-time.md        # Portal text, HubSpot webhook
