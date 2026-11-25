@@ -2,6 +2,19 @@
 
 All notable changes to `n8n-nodes-allsign` will be documented in this file.
 
+## [0.8.0] — 2026-11-25
+
+### 🐛 Fixed
+
+- **A second Create node, or a second loop run, now creates its own document.** The `Idempotency-Key` the node sends on every write was derived from the execution, item, operation and document, but not from the node or the loop run. Two Create nodes in the same workflow, or `Loop Over Items`, sent the same key to the same route, and the API replayed the first document instead of creating the second one, or answered `409` if the body differed. The key now includes the node id and `$runIndex`. n8n's own retries of the same node, run and item still reuse their key, so they never duplicate a document.
+- **Your own Idempotency Key can be any text.** The API only accepts a UUID v4, so the suggested `order-4821-create` failed with `400 IDEMPOTENCY_KEY_INVALID`. Any text you enter is now turned into a stable UUID v4, and a value that is already a UUID v4 is sent as is.
+- **The Trigger no longer leaves orphan endpoints when the n8n URL changes.** Restarting a tunnel or changing `WEBHOOK_URL` made the Trigger forget its endpoint and register a new one. The old one stayed alive, failing on every delivery and counting toward the limit of 25 per environment, until activation failed with `WEBHOOK_LIMIT_EXCEEDED`. When only the host changes and the webhook path is the same, the Trigger now updates the existing endpoint's URL and keeps its id and secret. An endpoint with a different path is still left alone, because it may belong to an imported workflow.
+- **The credential test works with webhook-only API keys.** It called `/v3/documents`, which requires `document:read`, so a key with only webhook scopes failed the test. It now calls `/v3/users/me`, which answers for any valid key.
+
+### 🌐 Interface
+
+- **The whole interface is in English**, as n8n requires for verified nodes. "Handwritten Signature (Autografa)" is now "Handwritten Signature", "NOM-151 constancia" is now "NOM-151 certificate", and the examples use `supplier`, `full_name` and `amount`. A test checks every label, description and placeholder of both nodes and the credential.
+
 ## [0.7.0] — 2026-10-20
 
 ### ✨ Added
