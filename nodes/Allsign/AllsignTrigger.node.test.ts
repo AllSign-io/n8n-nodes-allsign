@@ -473,7 +473,7 @@ describe('AllSign Trigger', () => {
 				expect(c.staticData.webhookId).toBe(ENDPOINT_ID);
 			});
 
-			it('si apunta a otra URL lo olvida SIN borrarlo: puede ser de otro workflow', async () => {
+			it('si apunta a otra ruta lo olvida SIN borrarlo: puede ser de otro workflow', async () => {
 				const c = contexto({ webhookId: ENDPOINT_ID, secret: 'whsec_x' }, () =>
 					endpoint({ url: 'https://otro-n8n.example.com/webhook/zzz' }),
 				);
@@ -481,6 +481,20 @@ describe('AllSign Trigger', () => {
 				await expect(hooks().checkExists.call(c.hook as never)).resolves.toBe(false);
 				expect(c.staticData).toEqual({});
 				expect(c.peticiones.map((p) => p.method)).toEqual(['GET']);
+			});
+
+			it('misma ruta en otro dominio: le cambia la URL al endpoint y conserva id y secreto', async () => {
+				const c = contexto({ webhookId: ENDPOINT_ID, secret: 'whsec_x' }, (o) =>
+					o.method === 'PATCH' ? endpoint() : endpoint({ url: 'https://tunel-viejo.trycloudflare.com/webhook/abc' }),
+				);
+
+				await expect(hooks().checkExists.call(c.hook as never)).resolves.toBe(true);
+				expect(c.peticiones[1]).toEqual({
+					method: 'PATCH',
+					url: `${BASE}/v3/webhooks/${ENDPOINT_ID}`,
+					body: { url: URL_N8N },
+				});
+				expect(c.staticData).toEqual({ webhookId: ENDPOINT_ID, secret: 'whsec_x' });
 			});
 
 			it('si el circuit breaker lo apagó, lo reactiva y conserva id y secreto', async () => {

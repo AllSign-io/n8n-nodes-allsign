@@ -70,7 +70,7 @@ Send (or resend) the signing invitation for a document that already exists.
 | **Recipients** (optional) | Overrides who receives the invitation — same Delivery Method (Email/WhatsApp) shape as Signers. Leave empty to send to the signers already attached to the document |
 | **Idempotency Key** (optional) | Safely retry the send request without dispatching duplicate invitations |
 
-> **Idempotency Key is always sent, even if you leave it empty.** The AllSign API requires an `Idempotency-Key` header on every Create/Send request. If you don't set one, the node auto-generates a random UUID v4 per item — set your own only if you need a *stable* key across manual retries.
+> **Idempotency Key is always sent, even if you leave it empty.** The AllSign API requires a UUID v4 `Idempotency-Key` on every write. If you leave it empty, the node derives one from the execution, node, loop run and item, so n8n's own retries never duplicate a document while two Create nodes, or two loop runs, still get their own. If you set it, you can use any text (such as `order-4821`): the node turns it into a stable UUID v4. A value that is already a UUID v4 is sent as is.
 
 ### 📄 Operation: Get Document
 

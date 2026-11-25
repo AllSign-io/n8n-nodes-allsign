@@ -11,40 +11,22 @@ import type {
 import { NodeConnectionTypes, NodeApiError, NodeOperationError } from 'n8n-workflow';
 
 /**
- * Idempotency-Key determinista para una operación de escritura.
+ * Idempotency-Key para una operación de escritura.
  *
- * Por qué NO `randomUUID()`: n8n reintenta un nodo por su cuenta cuando el POST
- * hace timeout o devuelve 5xx. Con una llave nueva en cada intento, la API ve
- * dos peticiones distintas y crea DOS documentos — y cobra dos veces. El
- * síntoma es el mismo del cliente que canceló: falla en silencio y se ve bien.
- *
- * La llave se deriva de (executionId, itemIndex, operación, documentId) para que:
- *   - el mismo item reintentado reuse su llave  → la API replaya, no duplica;
- *   - dos operaciones del mismo item no colisionen → un `void` no se replaya
- *     como si fuera el `send` anterior devolviendo su respuesta.
- *
- * La forma importa: `app/api/v3/idempotency.py` valida contra
- *   ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$
- * o sea UUID v4 ESTRICTO — el `4` y el `[89ab]` no son decorativos. Por eso no
- * basta concatenar los campos: se hashean y se fuerzan esos dos nibbles.
- *
- * Si no hay executionId (pruebas manuales, algunos contextos de n8n), se cae a
- * `randomUUID()`: preferimos una llave aleatoria a una constante que provoque
- * replays entre ejecuciones distintas.
+ * `app/api/v3/idempotency.py` solo acepta UUID v4 estricto y guarda la llave por
+ * tenant + método + ruta. Por eso:
+ *   - una llave del usuario que ya es UUID v4 se manda tal cual; cualquier otro
+ *     texto se convierte en un UUID v4 estable, así `order-4821` funciona;
+ *   - sin llave del usuario se deriva de (ejecución, nodo, vuelta, item,
+ *     operación, documento): un reintento de n8n reusa la llave y la API
+ *     replaya, mientras que dos nodos Create o dos vueltas de un loop en la
+ *     misma ejecución reciben llaves distintas y crean sus propios documentos;
+ *   - sin executionId (pruebas manuales) se usa `randomUUID()`.
  */
-function stableIdempotencyKey(
-	executionId: string,
-	itemIndex: number,
-	operation: string,
-	documentId = '',
-): string {
-	if (!executionId) return randomUUID();
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-	const h = createHash('sha256')
-		.update(`${executionId}:${itemIndex}:${operation}:${documentId}`)
-		.digest('hex');
-
-	// Nibble 12 fijo en '4' (versión) y nibble 16 en 8|9|a|b (variante RFC 4122).
+function uuidV4From(seed: string): string {
+	const h = createHash('sha256').update(seed).digest('hex');
 	const variant = '89ab'[parseInt(h[16], 16) % 4];
 	return [
 		h.slice(0, 8),
@@ -53,6 +35,25 @@ function stableIdempotencyKey(
 		`${variant}${h.slice(17, 20)}`,
 		h.slice(20, 32),
 	].join('-');
+}
+
+function idempotencyKeyFor(
+	ctx: IExecuteFunctions,
+	itemIndex: number,
+	operation: string,
+	userKey: string,
+	documentId = '',
+): string {
+	const propia = userKey.trim();
+	if (propia) return UUID_V4.test(propia) ? propia : uuidV4From(`user:${propia}`);
+
+	const executionId = ctx.getExecutionId();
+	if (!executionId) return randomUUID();
+
+	const runIndex = ctx.getWorkflowDataProxy(itemIndex).$runIndex;
+	return uuidV4From(
+		`${executionId}:${ctx.getNode().id}:${runIndex}:${itemIndex}:${operation}:${documentId}`,
+	);
 }
 
 /**
@@ -231,7 +232,7 @@ export class Allsign implements INodeType {
 					{
 						name: 'Get Evidence',
 						value: 'getDocumentEvidence',
-						description: 'Get a document evidence bundle (signed PDF and NOM-151 constancia)',
+						description: 'Get a document evidence bundle (signed PDF and NOM-151 certificate)',
 						action: 'Get document evidence',
 					},
 					{
@@ -395,7 +396,7 @@ export class Allsign implements INodeType {
 				name: 'templateValues',
 				type: 'json',
 				default: '{}',
-				placeholder: '{"nombre_completo": "Juan Pérez", "monto": "$10,000"}',
+				placeholder: '{"full_name": "Jane Doe", "amount": "$10,000"}',
 				description: 'Key-value pairs to fill in the template variables. Keys are the template\'s natural variable names (never camelCased).',
 				displayOptions: {
 					show: {
@@ -477,8 +478,8 @@ export class Allsign implements INodeType {
 								name: 'roleName',
 								type: 'string',
 								default: '',
-								placeholder: 'e.g. proveedor',
-								description: 'Semantic role for this signer (e.g. "proveedor"), used to auto-assign template variables marked with that role. Optional.',
+								placeholder: 'e.g. supplier',
+								description: 'Semantic role for this signer (e.g. "supplier"), used to auto-assign template variables marked with that role. Optional.',
 							},
 							{
 								displayName: 'WhatsApp',
@@ -534,7 +535,7 @@ export class Allsign implements INodeType {
 							'Whether to require FEA (Advanced Electronic Signature) verification — Mexico standard',
 					},
 					{
-						displayName: 'Handwritten Signature (Autografa)',
+						displayName: 'Handwritten Signature',
 						name: 'verifyAutografa',
 						type: 'boolean',
 						default: true,
@@ -598,9 +599,9 @@ export class Allsign implements INodeType {
 						name: 'idempotencyKey',
 						type: 'string',
 						default: '',
-						placeholder: 'e.g. order-4821-create',
+						placeholder: 'e.g. order-4821',
 						description:
-							'Optional — set your own key to safely retry this request without creating a duplicate document. If left empty, a random UUID v4 is auto-generated per execution (the API requires this header on every write).',
+							'Optional — any text or a UUID v4 that identifies this request, so retrying it never creates a duplicate document. Text is turned into a UUID v4. If left empty, a key is derived from the execution, node and item.',
 					},
 				],
 			},
@@ -722,8 +723,8 @@ export class Allsign implements INodeType {
 				name: 'idempotencyKey',
 				type: 'string',
 				default: '',
-				placeholder: 'e.g. order-4821-send',
-				description: 'Optional — set your own key to safely retry this request without duplicating the effect (a second invitation, void, or reminder). If left empty, a random UUID v4 is auto-generated per execution (the API requires this header on every write).',
+				placeholder: 'e.g. order-4821',
+				description: 'Optional — any text or a UUID v4 that identifies this request, so retrying it never duplicates the effect (a second invitation, void, or reminder). Text is turned into a UUID v4. If left empty, a key is derived from the execution, node and item.',
 				displayOptions: {
 					show: {
 						resource: ['document'],
@@ -939,14 +940,14 @@ export class Allsign implements INodeType {
 						return r;
 					});
 
-					// The API requires Idempotency-Key on every write (400
-
-					// La llave por defecto es DETERMINISTA, no aleatoria: n8n reintenta solo
-					// cuando el POST hace timeout, y con `randomUUID()` cada intento creaba otro
-					// documento y volvía a cobrar. Ver `stableIdempotencyKey`.
 					const idempotencyKey =
-						(this.getNodeParameter('idempotencyKey', i, '') as string).trim() ||
-						stableIdempotencyKey(this.getExecutionId(), i, 'sendDocument', documentId);
+						idempotencyKeyFor(
+						this,
+						i,
+						'sendDocument',
+						this.getNodeParameter('idempotencyKey', i, '') as string,
+						documentId,
+					);
 
 					// `null` explícito, NO un objeto vacío. n8n descarta los cuerpos vacíos
 					// (`isObjectEmpty` en `convertN8nRequestToAxios`): con `{}` la petición
@@ -1180,14 +1181,14 @@ export class Allsign implements INodeType {
 					}
 
 					const reason = (this.getNodeParameter('reason', i, '') as string).trim();
-					// The API requires Idempotency-Key on every write (400
-
-					// La llave por defecto es DETERMINISTA, no aleatoria: n8n reintenta solo
-					// cuando el POST hace timeout, y con `randomUUID()` cada intento creaba otro
-					// documento y volvía a cobrar. Ver `stableIdempotencyKey`.
 					const idempotencyKey =
-						(this.getNodeParameter('idempotencyKey', i, '') as string).trim() ||
-						stableIdempotencyKey(this.getExecutionId(), i, 'voidDocument', documentId);
+						idempotencyKeyFor(
+						this,
+						i,
+						'voidDocument',
+						this.getNodeParameter('idempotencyKey', i, '') as string,
+						documentId,
+					);
 
 					// `null` explícito por lo mismo que en `sendDocument`: `void_document`
 					// declara `body: VoidRequest` obligatorio y n8n no manda los cuerpos
@@ -1236,14 +1237,14 @@ export class Allsign implements INodeType {
 						});
 					}
 
-					// The API requires Idempotency-Key on every write (400
-
-					// La llave por defecto es DETERMINISTA, no aleatoria: n8n reintenta solo
-					// cuando el POST hace timeout, y con `randomUUID()` cada intento creaba otro
-					// documento y volvía a cobrar. Ver `stableIdempotencyKey`.
 					const idempotencyKey =
-						(this.getNodeParameter('idempotencyKey', i, '') as string).trim() ||
-						stableIdempotencyKey(this.getExecutionId(), i, 'remindSigner', documentId);
+						idempotencyKeyFor(
+						this,
+						i,
+						'remindSigner',
+						this.getNodeParameter('idempotencyKey', i, '') as string,
+						documentId,
+					);
 
 					// The router has no body param for this endpoint — none is sent.
 					const requestOptions: IHttpRequestOptions = {
@@ -1286,11 +1287,12 @@ export class Allsign implements INodeType {
 				// Configuration (from collapsible collection)
 				const configSettings = this.getNodeParameter('configuration', i, {}) as IDataObject;
 				const expiresAt = (configSettings.expiresAt as string) ?? '';
-				// Determinista por (ejecución, item): un retry de n8n reusa la llave y la
-				// API replaya en vez de crear un segundo documento. Ver `stableIdempotencyKey`.
-				const idempotencyKey =
-					((configSettings.idempotencyKey as string) ?? '').trim() ||
-					stableIdempotencyKey(this.getExecutionId(), i, 'createDocument');
+				const idempotencyKey = idempotencyKeyFor(
+					this,
+					i,
+					'createDocument',
+					(configSettings.idempotencyKey as string) ?? '',
+				);
 
 				// Signature Validations (from collapsible collection) — v3's curated 6-flag subset
 				const sigValidations = this.getNodeParameter('signatureValidations', i, {}) as IDataObject;
