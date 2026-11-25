@@ -585,7 +585,7 @@ describe('AllSign Trigger', () => {
 						o.url.endsWith('/v3/users/me')
 							? { scopes }
 							: { ...endpoint(), secret: 'whsec_nuevo' },
-					{ events: ['document.completed'], endpointDescription: '' },
+					{ events: ['document.completed'], options: {} },
 				);
 
 			it('con una llave sin webhook:delete falla al ACTIVAR, que es cuando el usuario sí lo ve', async () => {
@@ -593,6 +593,29 @@ describe('AllSign Trigger', () => {
 
 				await expect(hooks().create.call(c.hook as never)).rejects.toThrow(/webhook:delete/);
 				expect(c.peticiones.map((p) => p.url)).toEqual([`${BASE}/v3/users/me`]);
+			});
+
+			it('manda la descripción que el usuario puso en Options', async () => {
+				const c = contexto(
+					{},
+					(o) =>
+						o.url.endsWith('/v3/users/me')
+							? { scopes: ['webhook:read', 'webhook:write', 'webhook:delete'] }
+							: { ...endpoint(), secret: 'whsec_nuevo' },
+					{ events: ['document.completed'], options: { endpointDescription: 'n8n — NDA' } },
+				);
+
+				await expect(hooks().create.call(c.hook as never)).resolves.toBe(true);
+				const alta = c.peticiones.find((p) => p.method === 'POST');
+				expect(alta?.body).toEqual({ url: URL_N8N, events: ['document.completed'], description: 'n8n — NDA' });
+			});
+
+			it('la descripción vive en una colección Options, no suelta en el formulario', () => {
+				const propiedades = new AllsignTrigger().description.properties;
+				const opciones = propiedades.find((p) => p.name === 'options');
+				expect(opciones?.type).toBe('collection');
+				expect(opciones?.options?.map((o) => o.name)).toEqual(['endpointDescription']);
+				expect(propiedades.find((p) => p.name === 'endpointDescription')).toBeUndefined();
 			});
 
 			it('el mensaje nombra TODOS los permisos que faltan', async () => {

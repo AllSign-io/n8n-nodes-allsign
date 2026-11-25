@@ -391,21 +391,6 @@ export class Allsign implements INodeType {
 					},
 				},
 			},
-			{
-				displayName: 'Template Values',
-				name: 'templateValues',
-				type: 'json',
-				default: '{}',
-				placeholder: '{"full_name": "Jane Doe", "amount": "$10,000"}',
-				description: 'Key-value pairs to fill in the template variables. Keys are the template\'s natural variable names (never camelCased).',
-				displayOptions: {
-					show: {
-						resource: ['document'],
-						operation: ['createDocument'],
-						source: ['template'],
-					},
-				},
-			},
 
 			// ====================================================
 			// SIGNERS (Create Document)
@@ -578,7 +563,7 @@ export class Allsign implements INodeType {
 				type: 'collection',
 				placeholder: 'Configure',
 				default: {},
-				description: 'Controls expiration and request idempotency',
+				description: 'Optional settings for the new document',
 				displayOptions: {
 					show: {
 						resource: ['document'],
@@ -586,6 +571,20 @@ export class Allsign implements INodeType {
 					},
 				},
 				options: [
+					{
+						displayName: 'Template Values',
+						name: 'templateValues',
+						type: 'json',
+						default: '{}',
+						placeholder: '{"full_name": "Jane Doe", "amount": "$10,000"}',
+						description:
+							'Key-value pairs to fill in the template variables. Keys are the template\'s natural variable names (never camelCased).',
+						displayOptions: {
+							show: {
+								'/source': ['template'],
+							},
+						},
+					},
 					{
 						displayName: 'Expires At',
 						name: 'expiresAt',
@@ -715,40 +714,42 @@ export class Allsign implements INodeType {
 				],
 			},
 
-			// ====================================================
-			// ⚙️ CONFIGURATION (Send Document / Void Document / Remind Signer)
-			// ====================================================
 			{
-				displayName: 'Idempotency Key',
-				name: 'idempotencyKey',
-				type: 'string',
-				default: '',
-				placeholder: 'e.g. order-4821',
-				description: 'Optional — any text or a UUID v4 that identifies this request, so retrying it never duplicates the effect (a second invitation, void, or reminder). Text is turned into a UUID v4. If left empty, a key is derived from the execution, node and item.',
+				displayName: 'Options',
+				name: 'options',
+				type: 'collection',
+				placeholder: 'Add Option',
+				default: {},
 				displayOptions: {
 					show: {
 						resource: ['document'],
 						operation: ['sendDocument', 'voidDocument', 'remindSigner'],
 					},
 				},
-			},
-
-			// ====================================================
-			// REASON (Void Document)
-			// ====================================================
-			{
-				displayName: 'Reason',
-				name: 'reason',
-				type: 'string',
-				default: '',
-				placeholder: 'e.g. Contract superseded by a new draft',
-				description: 'Optional — why the document is being voided. Kept in the document audit log.',
-				displayOptions: {
-					show: {
-						resource: ['document'],
-						operation: ['voidDocument'],
+				options: [
+					{
+						displayName: 'Idempotency Key',
+						name: 'idempotencyKey',
+						type: 'string',
+						default: '',
+						placeholder: 'e.g. order-4821',
+						description:
+							'Any text or a UUID v4 that identifies this request, so retrying it never duplicates the effect (a second invitation, void, or reminder). Text is turned into a UUID v4. If left empty, a key is derived from the execution, node and item.',
 					},
-				},
+					{
+						displayName: 'Reason',
+						name: 'reason',
+						type: 'string',
+						default: '',
+						placeholder: 'e.g. Contract superseded by a new draft',
+						description: 'Why the document is being voided. Kept in the document audit log.',
+						displayOptions: {
+							show: {
+								'/operation': ['voidDocument'],
+							},
+						},
+					},
+				],
 			},
 
 			// ====================================================
@@ -774,6 +775,19 @@ export class Allsign implements INodeType {
 			// LIST DOCUMENTS
 			// ====================================================
 			{
+				displayName: 'Return All',
+				name: 'returnAll',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to return all results or only up to a given limit',
+				displayOptions: {
+					show: {
+						resource: ['document'],
+						operation: ['listDocuments'],
+					},
+				},
+			},
+			{
 				displayName: 'Limit',
 				name: 'limit',
 				type: 'number',
@@ -787,6 +801,7 @@ export class Allsign implements INodeType {
 					show: {
 						resource: ['document'],
 						operation: ['listDocuments'],
+						returnAll: [false],
 					},
 				},
 			},
@@ -796,7 +811,7 @@ export class Allsign implements INodeType {
 				type: 'collection',
 				placeholder: 'Add Filter',
 				default: {},
-				description: 'Optional filters and pagination cursors for the list',
+				description: 'Optional filters for the list',
 				displayOptions: {
 					show: {
 						resource: ['document'],
@@ -805,26 +820,12 @@ export class Allsign implements INodeType {
 				},
 				options: [
 					{
-						displayName: 'Ending Before',
-						name: 'endingBefore',
-						type: 'string',
-						default: '',
-						description: 'Cursor — return documents ending before this one (mutually exclusive with Starting After)',
-					},
-					{
 						displayName: 'Folder ID',
 						name: 'folderId',
 						type: 'string',
 						default: '',
 						placeholder: 'fld_...',
 						description: 'Only return documents in this folder',
-					},
-					{
-						displayName: 'Include Total',
-						name: 'includeTotal',
-						type: 'boolean',
-						default: false,
-						description: 'Whether to include the total match count (extra query cost)',
 					},
 					{
 						displayName: 'Scope',
@@ -845,13 +846,6 @@ export class Allsign implements INodeType {
 						type: 'string',
 						default: '',
 						description: 'Free-text search',
-					},
-					{
-						displayName: 'Starting After',
-						name: 'startingAfter',
-						type: 'string',
-						default: '',
-						description: 'Cursor — return documents starting after this one (mutually exclusive with Ending Before)',
 					},
 					{
 						displayName: 'Status',
@@ -945,7 +939,7 @@ export class Allsign implements INodeType {
 						this,
 						i,
 						'sendDocument',
-						this.getNodeParameter('idempotencyKey', i, '') as string,
+						(this.getNodeParameter('options', i, {}) as IDataObject).idempotencyKey as string ?? '',
 						documentId,
 					);
 
@@ -1023,84 +1017,57 @@ export class Allsign implements INodeType {
 				}
 
 				if (operation === 'listDocuments') {
-					// El UI acota 1..100, pero una EXPRESIÓN (`={{ 500 }}`, `={{ 0 }}`) se
-					// evalúa fuera de esa restricción y llegaba tal cual. La API responde
-					// 422 VALIDATION_ERROR con `field: limit / OUT_OF_RANGE`; se falla aquí
-					// para que el error apunte al parámetro y no a un 422 opaco.
-					const limitRaw = this.getNodeParameter('limit', i, 50) as number;
-					const limit = Number(limitRaw);
-					if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
-						throw new NodeOperationError(
-							this.getNode(),
-							`Limit must be a whole number between 1 and 100 (got ${limitRaw}).`,
-							{ itemIndex: i },
-						);
+					const returnAll = this.getNodeParameter('returnAll', i, false) as boolean;
+					let limit = 100;
+					if (!returnAll) {
+						// El UI acota 1..100, pero una EXPRESIÓN (`={{ 500 }}`, `={{ 0 }}`) se
+						// evalúa fuera de esa restricción y llegaba tal cual. La API responde
+						// 422 VALIDATION_ERROR con `field: limit / OUT_OF_RANGE`; se falla aquí
+						// para que el error apunte al parámetro y no a un 422 opaco.
+						const limitRaw = this.getNodeParameter('limit', i, 50) as number;
+						limit = Number(limitRaw);
+						if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+							throw new NodeOperationError(
+								this.getNode(),
+								`Limit must be a whole number between 1 and 100 (got ${limitRaw}).`,
+								{ itemIndex: i },
+							);
+						}
 					}
 					const filters = this.getNodeParameter('filters', i, {}) as IDataObject;
 
 					const qs: IDataObject = { limit };
-					const status = (filters.status as string) ?? '';
-					if (status) {
-						qs.status = status;
-					}
-					const scope = (filters.scope as string) ?? '';
-					if (scope) {
-						qs.scope = scope;
-					}
-					const search = (filters.search as string) ?? '';
-					if (search) {
-						qs.search = search;
-					}
-					const startingAfter = (filters.startingAfter as string) ?? '';
-					if (startingAfter) {
-						qs.startingAfter = startingAfter;
-					}
-					const endingBefore = (filters.endingBefore as string) ?? '';
-					if (endingBefore) {
-						qs.endingBefore = endingBefore;
-					}
-					// El copy del campo dice que son excluyentes y el router los rechaza
-					// juntos (422, `field: endingBefore / INVALID_VALUE`). Mandarlos y dejar
-					// que la API decida convierte un error de configuración en uno de red.
-					if (startingAfter && endingBefore) {
-						throw new NodeOperationError(
-							this.getNode(),
-							'Starting After and Ending Before are mutually exclusive — set only one.',
-							{ itemIndex: i },
-						);
-					}
-					const folderId = (filters.folderId as string) ?? '';
-					if (folderId) {
-						qs.folderId = folderId;
-					}
-					if ((filters.includeTotal as boolean) ?? false) {
-						qs.includeTotal = true;
+					for (const campo of ['status', 'scope', 'search', 'folderId']) {
+						const valor = (filters[campo] as string) ?? '';
+						if (valor) qs[campo] = valor;
 					}
 
-					// Read-only: no body, no Idempotency-Key (doesn't apply to GET).
-					const requestOptions: IHttpRequestOptions = {
-						method: 'GET',
-						url: `${baseUrl}/v3/documents`,
-						qs,
-						json: true,
-					};
+					const documents: IDataObject[] = [];
+					let cursor = '';
+					do {
+						if (cursor) qs.startingAfter = cursor;
+						let page: IDataObject;
+						try {
+							page = (await this.helpers.httpRequestWithAuthentication.call(this, 'allSignApi', {
+								method: 'GET',
+								url: `${baseUrl}/v3/documents`,
+								qs: { ...qs },
+								json: true,
+							})) as IDataObject;
+						} catch (listError) {
+							throw new NodeApiError(this.getNode(), listError as JsonObject, {
+								message: 'Listing documents failed',
+								description: apiErrorDescription(listError),
+								itemIndex: i,
+							});
+						}
+						documents.push(...((page.data as IDataObject[]) ?? []));
+						cursor = returnAll && page.hasMore ? ((page.nextCursor as string) ?? '') : '';
+					} while (cursor);
 
-					let listResponse: IDataObject;
-					try {
-						listResponse = (await this.helpers.httpRequestWithAuthentication.call(
-							this,
-							'allSignApi',
-							requestOptions,
-						)) as IDataObject;
-					} catch (listError) {
-						throw new NodeApiError(this.getNode(), listError as JsonObject, {
-							message: 'Listing documents failed',
-							description: apiErrorDescription(listError),
-							itemIndex: i,
-						});
+					for (const document of documents) {
+						returnData.push({ json: document, pairedItem: { item: i } });
 					}
-
-					returnData.push({ json: listResponse, pairedItem: { item: i } });
 					continue;
 				}
 
@@ -1180,13 +1147,15 @@ export class Allsign implements INodeType {
 						});
 					}
 
-					const reason = (this.getNodeParameter('reason', i, '') as string).trim();
+					const reason = (
+						((this.getNodeParameter('options', i, {}) as IDataObject).reason as string) ?? ''
+					).trim();
 					const idempotencyKey =
 						idempotencyKeyFor(
 						this,
 						i,
 						'voidDocument',
-						this.getNodeParameter('idempotencyKey', i, '') as string,
+						(this.getNodeParameter('options', i, {}) as IDataObject).idempotencyKey as string ?? '',
 						documentId,
 					);
 
@@ -1242,7 +1211,7 @@ export class Allsign implements INodeType {
 						this,
 						i,
 						'remindSigner',
-						this.getNodeParameter('idempotencyKey', i, '') as string,
+						(this.getNodeParameter('options', i, {}) as IDataObject).idempotencyKey as string ?? '',
 						documentId,
 					);
 
@@ -1363,7 +1332,7 @@ export class Allsign implements INodeType {
 					// objeto ya evaluado. `JSON.parse` sobre un objeto lo coacciona a
 					// "[object Object]" y truena con «Invalid JSON» — un error que apunta al
 					// usuario cuando el input era válido.
-					const templateValuesRaw = this.getNodeParameter('templateValues', i, '{}') as
+					const templateValuesRaw = (configSettings.templateValues ?? '{}') as
 						| string
 						| Record<string, unknown>;
 

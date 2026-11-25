@@ -225,7 +225,9 @@
         "documentName": "={{ $('Map Form to Template Variables').item.json.documentName }}",
         "source": "template",
         "templateId": "={{ $('Map Form to Template Variables').item.json.templateId }}",
-        "templateValues": "={{ $('Map Form to Template Variables').item.json.templateValuesJson }}",
+        "configuration": {
+          "templateValues": "={{ $('Map Form to Template Variables').item.json.templateValuesJson }}"
+        },
         "signers": {
           "signerValues": [
             {
