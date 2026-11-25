@@ -22,7 +22,10 @@ const mockHttpRequestWithAuthentication = jest.fn();
 const mockAssertBinaryData = jest.fn();
 const mockGetBinaryDataBuffer = jest.fn();
 
-const getMockExecuteFunctions = (params: Record<string, unknown>): IExecuteFunctions => {
+const getMockExecuteFunctions = (
+	params: Record<string, unknown>,
+	contexto: { nodeId?: string; runIndex?: number } = {},
+): IExecuteFunctions => {
 	return {
 		getInputData: () => [{ json: {} }],
 		getNodeParameter: (name: string, _index: number, fallback?: unknown) => {
@@ -42,10 +45,8 @@ const getMockExecuteFunctions = (params: Record<string, unknown>): IExecuteFunct
 			getBinaryDataBuffer: mockGetBinaryDataBuffer,
 		} as unknown as IExecuteFunctions['helpers'],
 		continueOnFail: () => false,
-		getNode: () => ({ name: 'AllSign' }),
-		// `stableIdempotencyKey` lo usa para derivar una llave determinista por
-		// (ejecución, item, operación). Fijo en los tests para que la llave sea
-		// reproducible y se pueda afirmar sobre ella.
+		getNode: () => ({ name: 'AllSign', id: contexto.nodeId ?? 'node_test_1' }),
+		getWorkflowDataProxy: () => ({ $runIndex: contexto.runIndex ?? 0 }),
 		getExecutionId: () => 'exec_test_1',
 	} as unknown as IExecuteFunctions;
 };
@@ -718,7 +719,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 
 			await node.execute.call(fn);
 			const requestOptions = mockHttpRequestWithAuthentication.mock.calls[0][1];
-			expect(requestOptions.headers).toEqual({ 'Idempotency-Key': 'example-order-4821' });
+			expect(requestOptions.headers['Idempotency-Key']).toMatch(UUID_V4_REGEX);
 		});
 
 		it('should auto-generate a UUID v4 Idempotency-Key when the user omits one (API requires it on every write)', async () => {
@@ -915,7 +916,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 
 			await node.execute.call(fn);
 			const requestOptions = mockHttpRequestWithAuthentication.mock.calls[0][1];
-			expect(requestOptions.headers).toEqual({ 'Idempotency-Key': 'send-order-4821' });
+			expect(requestOptions.headers['Idempotency-Key']).toMatch(UUID_V4_REGEX);
 		});
 
 		it('should throw when Document ID is missing', async () => {
@@ -1327,7 +1328,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 
 			await node.execute.call(fn);
 			const requestOptions = mockHttpRequestWithAuthentication.mock.calls[0][1];
-			expect(requestOptions.headers).toEqual({ 'Idempotency-Key': 'void-order-99' });
+			expect(requestOptions.headers['Idempotency-Key']).toMatch(UUID_V4_REGEX);
 		});
 
 		it('should throw when Document ID is missing', async () => {
@@ -1395,7 +1396,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 
 			await node.execute.call(fn);
 			const requestOptions = mockHttpRequestWithAuthentication.mock.calls[0][1];
-			expect(requestOptions.headers).toEqual({ 'Idempotency-Key': 'remind-order-7' });
+			expect(requestOptions.headers['Idempotency-Key']).toMatch(UUID_V4_REGEX);
 		});
 
 		it('should throw when Document ID is missing', async () => {
@@ -1624,7 +1625,75 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 				'recipients.recipientValues': [{ deliveryMethod: 'email', email: 'a@b.mx' }],
 			});
 			await node.execute.call(fn);
-			expect(keyOf(0)).toBe('mi-llave-estable');
+			expect(keyOf(0)).toMatch(UUID_V4_REGEX);
+		});
+
+		it('el mismo texto del usuario da siempre el mismo UUID v4', async () => {
+			const conLlave = (llave: string) =>
+				getMockExecuteFunctions({
+					operation: 'sendDocument',
+					documentId: 'doc_123',
+					idempotencyKey: llave,
+					'recipients.recipientValues': [{ deliveryMethod: 'email', email: 'a@b.mx' }],
+				});
+			mockHttpRequestWithAuthentication.mockResolvedValue({ id: 'doc_123' });
+			await node.execute.call(conLlave('order-4821'));
+			await node.execute.call(conLlave('order-4821'));
+			await node.execute.call(conLlave('order-4822'));
+			expect(keyOf(0)).toBe(keyOf(1));
+			expect(keyOf(2)).not.toBe(keyOf(0));
+		});
+
+		it('un UUID v4 del usuario se manda tal cual', async () => {
+			const uuid = '7f3c1a2b-9d4e-4f6a-8b1c-2d3e4f5a6b7c';
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ id: 'doc_123' });
+			await node.execute.call(
+				getMockExecuteFunctions({
+					operation: 'sendDocument',
+					documentId: 'doc_123',
+					idempotencyKey: uuid,
+					'recipients.recipientValues': [{ deliveryMethod: 'email', email: 'a@b.mx' }],
+				}),
+			);
+			expect(keyOf(0)).toBe(uuid);
+		});
+
+		const crearCon = (contexto: { nodeId?: string; runIndex?: number }) =>
+			getMockExecuteFunctions(
+				{
+					documentName: 'Doc',
+					source: 'file',
+					fileSource: 'url',
+					fileUrl: 'https://example.com/doc.pdf',
+					'signers.signerValues': [],
+					signatureValidations: {},
+					configuration: {},
+				},
+				contexto,
+			);
+
+		it('dos nodos Create en la misma ejecución no comparten llave', async () => {
+			mockHttpRequest.mockResolvedValue(Buffer.from('pdf'));
+			mockHttpRequestWithAuthentication.mockResolvedValue({ id: 'doc_x' });
+			await node.execute.call(crearCon({ nodeId: 'create_a' }));
+			await node.execute.call(crearCon({ nodeId: 'create_b' }));
+			expect(keyOf(0)).not.toBe(keyOf(1));
+		});
+
+		it('dos vueltas de un loop sobre el mismo nodo no comparten llave', async () => {
+			mockHttpRequest.mockResolvedValue(Buffer.from('pdf'));
+			mockHttpRequestWithAuthentication.mockResolvedValue({ id: 'doc_x' });
+			await node.execute.call(crearCon({ runIndex: 0 }));
+			await node.execute.call(crearCon({ runIndex: 1 }));
+			expect(keyOf(0)).not.toBe(keyOf(1));
+		});
+
+		it('el mismo nodo, vuelta e item reintentados reusan la llave', async () => {
+			mockHttpRequest.mockResolvedValue(Buffer.from('pdf'));
+			mockHttpRequestWithAuthentication.mockResolvedValue({ id: 'doc_x' });
+			await node.execute.call(crearCon({ nodeId: 'create_a', runIndex: 2 }));
+			await node.execute.call(crearCon({ nodeId: 'create_a', runIndex: 2 }));
+			expect(keyOf(0)).toBe(keyOf(1));
 		});
 	});
 
