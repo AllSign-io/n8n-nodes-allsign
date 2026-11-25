@@ -178,7 +178,7 @@ export class AllsignTrigger implements INodeType {
 		version: 1,
 		subtitle: '={{$parameter["events"].join(", ")}}',
 		description:
-			'Starts the workflow when something happens in AllSign — a document is signed, completed, voided, expires, or a NOM-151 constancia is issued',
+			'Starts the workflow when something happens in AllSign — a document is signed, completed, voided, expires, or a NOM-151 certificate is issued',
 		defaults: {
 			name: 'AllSign Trigger',
 		},

@@ -232,7 +232,7 @@ export class Allsign implements INodeType {
 					{
 						name: 'Get Evidence',
 						value: 'getDocumentEvidence',
-						description: 'Get a document evidence bundle (signed PDF and NOM-151 constancia)',
+						description: 'Get a document evidence bundle (signed PDF and NOM-151 certificate)',
 						action: 'Get document evidence',
 					},
 					{
@@ -396,7 +396,7 @@ export class Allsign implements INodeType {
 				name: 'templateValues',
 				type: 'json',
 				default: '{}',
-				placeholder: '{"nombre_completo": "Juan Pérez", "monto": "$10,000"}',
+				placeholder: '{"full_name": "Jane Doe", "amount": "$10,000"}',
 				description: 'Key-value pairs to fill in the template variables. Keys are the template\'s natural variable names (never camelCased).',
 				displayOptions: {
 					show: {
@@ -478,8 +478,8 @@ export class Allsign implements INodeType {
 								name: 'roleName',
 								type: 'string',
 								default: '',
-								placeholder: 'e.g. proveedor',
-								description: 'Semantic role for this signer (e.g. "proveedor"), used to auto-assign template variables marked with that role. Optional.',
+								placeholder: 'e.g. supplier',
+								description: 'Semantic role for this signer (e.g. "supplier"), used to auto-assign template variables marked with that role. Optional.',
 							},
 							{
 								displayName: 'WhatsApp',
@@ -535,7 +535,7 @@ export class Allsign implements INodeType {
 							'Whether to require FEA (Advanced Electronic Signature) verification — Mexico standard',
 					},
 					{
-						displayName: 'Handwritten Signature (Autografa)',
+						displayName: 'Handwritten Signature',
 						name: 'verifyAutografa',
 						type: 'boolean',
 						default: true,

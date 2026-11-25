@@ -4,6 +4,7 @@ import type { IExecuteFunctions } from 'n8n-workflow';
 // cambia la regla, estos tests se enteren.
 import { isObjectEmpty } from 'n8n-workflow';
 import { Allsign } from './Allsign.node';
+import { AllsignTrigger } from './AllsignTrigger.node';
 import { AllSignApi } from '../../credentials/AllSignApi.credentials';
 import exampleWorkflow from '../../examples/NDA_Automation_AllSign_Workflow.json';
 import pkg from '../../package.json';
@@ -1974,6 +1975,30 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 		it('la descripción de la credencial sigue mandando a sacar la llave', () => {
 			const apiKey = new AllSignApi().properties.find((p) => p.name === 'apiKey');
 			expect(apiKey?.description).toContain('allsign.io/developers/api-keys');
+		});
+
+		it('prueba la credencial con /v3/users/me, que responde a cualquier llave sin importar sus scopes', () => {
+			expect(new AllSignApi().test.request.url).toBe('/v3/users/me');
+		});
+
+		it('la interfaz no tiene textos en español: n8n la exige en inglés para verificar', () => {
+			const CAMPOS = ['displayName', 'description', 'placeholder', 'hint', 'action', 'subtitle'];
+			const ESPANOL =
+				/[áéíóúñ¿¡]|\b(constancia|autografa|proveedor|nombre|monto|firmante|documento|correo|plantilla)\b/i;
+			const textos: string[] = [];
+			const recorrer = (valor: unknown) => {
+				if (Array.isArray(valor)) return valor.forEach(recorrer);
+				if (!valor || typeof valor !== 'object') return;
+				for (const [clave, v] of Object.entries(valor)) {
+					if (CAMPOS.includes(clave) && typeof v === 'string') textos.push(v);
+					else recorrer(v);
+				}
+			};
+			recorrer(new Allsign().description);
+			recorrer(new AllsignTrigger().description);
+			recorrer(new AllSignApi().properties);
+			expect(textos.length).toBeGreaterThan(50);
+			expect(textos.filter((texto) => ESPANOL.test(texto))).toEqual([]);
 		});
 
 		it('declara la versión de Node que necesita', () => {
