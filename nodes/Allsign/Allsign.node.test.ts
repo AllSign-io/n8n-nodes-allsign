@@ -114,15 +114,17 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			]);
 		});
 
-		it('should share Idempotency Key across the three write operations (Send/Void/Remind), gated on Resource = Document too', () => {
-			const idempotencyKeyProp = node.description.properties.find((p) => p.name === 'idempotencyKey');
-			expect(idempotencyKeyProp).toBeDefined();
-			expect((idempotencyKeyProp as NodeProp).displayOptions.show.resource).toEqual(['document']);
-			expect((idempotencyKeyProp as NodeProp).displayOptions.show.operation).toEqual([
-				'sendDocument',
-				'voidDocument',
-				'remindSigner',
-			]);
+		it('should keep the optional fields of Send/Void/Remind in an Options collection', () => {
+			const options = node.description.properties.find((p) => p.name === 'options') as NodeProp;
+			expect(options.type).toBe('collection');
+			expect(options.displayOptions.show.resource).toEqual(['document']);
+			expect(options.displayOptions.show.operation).toEqual(['sendDocument', 'voidDocument', 'remindSigner']);
+			expect(options.options.map((o: NodeProp) => o.name)).toEqual(['idempotencyKey', 'reason']);
+			const reason = options.options.find((o: NodeProp) => o.name === 'reason');
+			expect(reason.displayOptions.show['/operation']).toEqual(['voidDocument']);
+			for (const suelto of ['idempotencyKey', 'reason']) {
+				expect(node.description.properties.find((p) => p.name === suelto)).toBeUndefined();
+			}
 		});
 
 		it('should gate every top-level operation-specific field on Resource = Document as well', () => {
@@ -133,15 +135,14 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 				'binaryProperty',
 				'fileUrl',
 				'templateId',
-				'templateValues',
 				'signers',
 				'signatureValidations',
 				'configuration',
 				'documentId',
 				'recipients',
-				'idempotencyKey',
-				'reason',
+				'options',
 				'signerId',
+				'returnAll',
 				'limit',
 				'filters',
 			];
@@ -161,13 +162,14 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			expect(values).toEqual(['file', 'template']);
 		});
 
-		it('should have templateId and templateValues fields shown only for Source = Template', () => {
+		it('should show templateId, and Template Values inside Configuration, only for Source = Template', () => {
 			const templateId = node.description.properties.find((p) => p.name === 'templateId');
-			const templateValues = node.description.properties.find((p) => p.name === 'templateValues');
 			expect(templateId).toBeDefined();
 			expect((templateId as NodeProp).displayOptions.show.source).toEqual(['template']);
-			expect(templateValues).toBeDefined();
-			expect((templateValues as NodeProp).displayOptions.show.source).toEqual(['template']);
+			const config = node.description.properties.find((p) => p.name === 'configuration') as NodeProp;
+			const templateValues = config.options.find((o: NodeProp) => o.name === 'templateValues');
+			expect(templateValues.displayOptions.show['/source']).toEqual(['template']);
+			expect(node.description.properties.find((p) => p.name === 'templateValues')).toBeUndefined();
 		});
 
 		it('should have fileSource shown only for Source = File', () => {
@@ -187,12 +189,12 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			expect(folder).toBeUndefined();
 		});
 
-		it('should have a collapsible Configuration collection with Expires At and Idempotency Key', () => {
+		it('should have a collapsible Configuration collection with Template Values, Expires At and Idempotency Key', () => {
 			const config = node.description.properties.find((p) => p.name === 'configuration');
 			expect(config).toBeDefined();
 			expect((config as NodeProp).type).toBe('collection');
 			const optNames = (config as NodeProp).options!.map((o: NodeProp) => o.name);
-			expect(optNames).toEqual(['expiresAt', 'idempotencyKey']);
+			expect(optNames).toEqual(['templateValues', 'expiresAt', 'idempotencyKey']);
 		});
 
 		it('should have codex aliases for discoverability including WhatsApp, without eIDAS', () => {
@@ -442,7 +444,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 				documentName: 'NDA from Template',
 				source: 'template',
 				templateId: 'tmpl_abc123',
-				templateValues: '{"nombre_completo": "Juan Perez", "monto": "$10,000"}',
+				configuration: { templateValues: '{"nombre_completo": "Juan Perez", "monto": "$10,000"}' },
 				'signers.signerValues': [{ name: 'Juan', deliveryMethod: 'email', email: 'juan@test.com', roleName: 'cliente' }],
 				signatureValidations: {},
 			});
@@ -467,7 +469,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 				documentName: 'Empty Values',
 				source: 'template',
 				templateId: 'tmpl_xyz',
-				templateValues: '{}',
+				configuration: { templateValues: '{}' },
 				'signers.signerValues': [],
 				signatureValidations: {},
 			});
@@ -496,7 +498,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 				documentName: 'Bad JSON',
 				source: 'template',
 				templateId: 'tmpl_abc',
-				templateValues: '{not valid json',
+				configuration: { templateValues: '{not valid json' },
 				'signers.signerValues': [],
 				signatureValidations: {},
 			});
@@ -912,7 +914,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 				operation: 'sendDocument',
 				documentId: 'doc_idem',
 				'recipients.recipientValues': [],
-				idempotencyKey: 'send-order-4821',
+				options: { idempotencyKey: 'send-order-4821' },
 			});
 
 			await node.execute.call(fn);
@@ -1100,9 +1102,51 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			expect(call.body).toBeUndefined();
 			expect(call.headers).toBeUndefined();
 
-			expect(result[0][0].json).toEqual(
-				expect.objectContaining({ object: 'list', data: [{ id: 'doc_1' }, { id: 'doc_2' }] }),
+			expect(result[0].map((item) => item.json)).toEqual([{ id: 'doc_1' }, { id: 'doc_2' }]);
+		});
+
+		it('sin Return All trae una sola página aunque la API diga que hay más', async () => {
+			mockHttpRequestWithAuthentication.mockResolvedValueOnce({
+				data: [{ id: 'doc_1' }],
+				hasMore: true,
+				nextCursor: 'doc_1',
+			});
+
+			const result = await node.execute.call(getMockExecuteFunctions({ operation: 'listDocuments', limit: 1 }));
+
+			expect(mockHttpRequestWithAuthentication).toHaveBeenCalledTimes(1);
+			expect(result[0]).toHaveLength(1);
+		});
+
+		it('con Return All sigue el cursor hasta la última página y no pide Limit', async () => {
+			mockHttpRequestWithAuthentication
+				.mockResolvedValueOnce({ data: [{ id: 'doc_1' }, { id: 'doc_2' }], hasMore: true, nextCursor: 'doc_2' })
+				.mockResolvedValueOnce({ data: [{ id: 'doc_3' }], hasMore: false, nextCursor: null });
+
+			const result = await node.execute.call(
+				getMockExecuteFunctions({ operation: 'listDocuments', returnAll: true, limit: 500, filters: { status: 'completed' } }),
 			);
+
+			const llamadas = mockHttpRequestWithAuthentication.mock.calls.map((c) => c[1].qs);
+			expect(llamadas).toEqual([
+				{ limit: 100, status: 'completed' },
+				{ limit: 100, status: 'completed', startingAfter: 'doc_2' },
+			]);
+			expect(result[0].map((item) => item.json.id)).toEqual(['doc_1', 'doc_2', 'doc_3']);
+			expect(result[0].every((item) => item.pairedItem)).toBe(true);
+		});
+
+		it('no expone cursores ni Include Total en los filtros', () => {
+			const filters = node.description.properties.find((p) => p.name === 'filters') as NodeProp;
+			const nombres = filters.options.map((o: NodeProp) => o.name);
+			expect(nombres).not.toEqual(expect.arrayContaining(['startingAfter']));
+			expect(nombres).not.toContain('endingBefore');
+			expect(nombres).not.toContain('includeTotal');
+		});
+
+		it('Limit solo aparece si Return All está apagado', () => {
+			const limit = node.description.properties.find((p) => p.name === 'limit') as NodeProp;
+			expect(limit.displayOptions.show.returnAll).toEqual([false]);
 		});
 
 		it('should only include filters the user actually set', async () => {
@@ -1115,9 +1159,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 					status: 'completed',
 					scope: 'org',
 					search: 'contract',
-					startingAfter: 'doc_abc',
 					folderId: 'fld_123',
-					includeTotal: true,
 				},
 			});
 
@@ -1128,13 +1170,11 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 				status: 'completed',
 				scope: 'org',
 				search: 'contract',
-				startingAfter: 'doc_abc',
 				folderId: 'fld_123',
-				includeTotal: true,
 			});
 		});
 
-		it('should not send includeTotal or empty filters when left at defaults', async () => {
+		it('should not send empty filters when left at defaults', async () => {
 			mockHttpRequestWithAuthentication.mockResolvedValueOnce({ object: 'list', data: [] });
 
 			const fn = getMockExecuteFunctions({
@@ -1295,7 +1335,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			const fn = getMockExecuteFunctions({
 				operation: 'voidDocument',
 				documentId: 'doc_456',
-				reason: 'Contract superseded',
+				options: { reason: 'Contract superseded' },
 			});
 
 			await node.execute.call(fn);
@@ -1324,7 +1364,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			const fn = getMockExecuteFunctions({
 				operation: 'voidDocument',
 				documentId: 'doc_789',
-				idempotencyKey: 'void-order-99',
+				options: { idempotencyKey: 'void-order-99' },
 			});
 
 			await node.execute.call(fn);
@@ -1392,7 +1432,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 				operation: 'remindSigner',
 				documentId: 'doc_123',
 				signerId: 'sgr_456',
-				idempotencyKey: 'remind-order-7',
+				options: { idempotencyKey: 'remind-order-7' },
 			});
 
 			await node.execute.call(fn);
@@ -1622,7 +1662,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 			const fn = getMockExecuteFunctions({
 				operation: 'sendDocument',
 				documentId: 'doc_123',
-				idempotencyKey: 'mi-llave-estable',
+				options: { idempotencyKey: 'mi-llave-estable' },
 				'recipients.recipientValues': [{ deliveryMethod: 'email', email: 'a@b.mx' }],
 			});
 			await node.execute.call(fn);
@@ -1634,7 +1674,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 				getMockExecuteFunctions({
 					operation: 'sendDocument',
 					documentId: 'doc_123',
-					idempotencyKey: llave,
+					options: { idempotencyKey: llave },
 					'recipients.recipientValues': [{ deliveryMethod: 'email', email: 'a@b.mx' }],
 				});
 			mockHttpRequestWithAuthentication.mockResolvedValue({ id: 'doc_123' });
@@ -1652,7 +1692,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 				getMockExecuteFunctions({
 					operation: 'sendDocument',
 					documentId: 'doc_123',
-					idempotencyKey: uuid,
+					options: { idempotencyKey: uuid },
 					'recipients.recipientValues': [{ deliveryMethod: 'email', email: 'a@b.mx' }],
 				}),
 			);
@@ -1750,7 +1790,7 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 				operation: 'createDocument',
 				source: 'template',
 				templateId: 'tpl_1',
-				templateValues: { nombre_completo: 'Ana' },
+				configuration: { templateValues: { nombre_completo: 'Ana' } },
 				documentName: 'X',
 				'signers.signerValues': [],
 			});
@@ -1769,13 +1809,6 @@ describe('AllSign Node (API v3 — Create Document + Send Document)', () => {
 
 		it.each([500, 0, 2.5])('rechaza limit=%s antes de salir a la red', async (limit) => {
 			await expect(listWith({ limit })).rejects.toThrow(/between 1 and 100/i);
-			expect(mockHttpRequestWithAuthentication).not.toHaveBeenCalled();
-		});
-
-		it('rechaza startingAfter y endingBefore juntos', async () => {
-			await expect(
-				listWith({ filters: { startingAfter: 'doc_a', endingBefore: 'doc_b' } }),
-			).rejects.toThrow(/mutually exclusive/i);
 			expect(mockHttpRequestWithAuthentication).not.toHaveBeenCalled();
 		});
 	});

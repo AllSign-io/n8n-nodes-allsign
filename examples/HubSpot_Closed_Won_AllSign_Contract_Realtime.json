@@ -703,7 +703,6 @@
         "documentName": "=Contract — {{ $json.dealName }}",
         "source": "template",
         "templateId": "={{ $json.templateId }}",
-        "templateValues": "={{ JSON.stringify({ nombre_cliente: $json.contactName, empresa_cliente: $json.company || $json.contactName, correo_cliente: $json.email, objeto: $json.objeto, fecha_efectiva: $json.fecha_efectiva, empresa_emisora: $json.empresa_emisora, representante_emisor: $json.emisor_nombre, correo_emisor: $json.emisor_correo, vigencia: $json.vigencia, jurisdiccion: $json.jurisdiccion }) }}",
         "signers": {
           "signerValues": [
             {
@@ -726,6 +725,7 @@
           "verifyNom151": true
         },
         "configuration": {
+          "templateValues": "={{ JSON.stringify({ nombre_cliente: $json.contactName, empresa_cliente: $json.company || $json.contactName, correo_cliente: $json.email, objeto: $json.objeto, fecha_efectiva: $json.fecha_efectiva, empresa_emisora: $json.empresa_emisora, representante_emisor: $json.emisor_nombre, correo_emisor: $json.emisor_correo, vigencia: $json.vigencia, jurisdiccion: $json.jurisdiccion }) }}",
           "idempotencyKey": "={{ ('allsign-hubspot-create-' + $json.dealId).hash('sha256').replace(/^(.{8})(.{4}).(.{3}).(.{3})(.{12}).*$/, '$1-$2-4$3-8$4-$5') }}"
         }
       },
@@ -797,7 +797,9 @@
         "resource": "document",
         "operation": "sendDocument",
         "documentId": "={{ $('Create contract in AllSign').item.json.id }}",
-        "idempotencyKey": "={{ ('allsign-hubspot-send-' + $('Create contract in AllSign').item.json.id).hash('sha256').replace(/^(.{8})(.{4}).(.{3}).(.{3})(.{12}).*$/, '$1-$2-4$3-8$4-$5') }}"
+        "options": {
+          "idempotencyKey": "={{ ('allsign-hubspot-send-' + $('Create contract in AllSign').item.json.id).hash('sha256').replace(/^(.{8})(.{4}).(.{3}).(.{3})(.{12}).*$/, '$1-$2-4$3-8$4-$5') }}"
+        }
       },
       "id": "c6796e2a-11cf-5da5-bc26-29985ddee821",
       "name": "Send for signature",
@@ -950,7 +952,9 @@
         "events": [
           "document.completed"
         ],
-        "endpointDescription": "n8n — HubSpot contract template"
+        "options": {
+          "endpointDescription": "n8n — HubSpot contract template"
+        }
       },
       "id": "d049cbf2-2d40-585e-b83b-ff1a3f6fe5ab",
       "name": "Contract signed",

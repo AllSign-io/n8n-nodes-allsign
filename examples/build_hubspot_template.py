@@ -471,13 +471,6 @@ create = allsign("Create contract in AllSign", {
     "documentName": "=Contract — {{ $json.dealName }}",
     "source": "template",
     "templateId": "={{ $json.templateId }}",
-    "templateValues": "={{ JSON.stringify({ nombre_cliente: $json.contactName, "
-                      "empresa_cliente: $json.company || $json.contactName, correo_cliente: $json.email, "
-                      "objeto: $json.objeto, fecha_efectiva: $json.fecha_efectiva, "
-                      "empresa_emisora: $json.empresa_emisora, representante_emisor: $json.emisor_nombre, "
-                      "correo_emisor: $json.emisor_correo, "
-                      "vigencia: $json.vigencia, "
-                      "jurisdiccion: $json.jurisdiccion }) }}",
     "signers": {"signerValues": [
         # Las dos partes firman. El acuerdo es recíproco, así que la empresa que
         # revela también se obliga. Ojo: los dos correos tienen que ser distintos,
@@ -497,7 +490,16 @@ create = allsign("Create contract in AllSign", {
         },
     ]},
     "signatureValidations": {"verifyAutografa": True, "verifyNom151": True},
-    "configuration": {"idempotencyKey": clave("allsign-hubspot-create", "$json.dealId")},
+    "configuration": {
+        "templateValues": "={{ JSON.stringify({ nombre_cliente: $json.contactName, "
+                          "empresa_cliente: $json.company || $json.contactName, correo_cliente: $json.email, "
+                          "objeto: $json.objeto, fecha_efectiva: $json.fecha_efectiva, "
+                          "empresa_emisora: $json.empresa_emisora, representante_emisor: $json.emisor_nombre, "
+                          "correo_emisor: $json.emisor_correo, "
+                          "vigencia: $json.vigencia, "
+                          "jurisdiccion: $json.jurisdiccion }) }}",
+        "idempotencyKey": clave("allsign-hubspot-create", "$json.dealId"),
+    },
 }, X1 + 1440, Y1, onError="continueErrorOutput", **REINTENTOS)
 
 # Guardar el id ANTES de enviar. Si el envío falla y el id no estaba guardado,
@@ -512,7 +514,7 @@ send = allsign("Send for signature", {
     # El documento ya no llega por la entrada: ahora entra el deal. El id se lee
     # del nodo que lo creó.
     "documentId": "={{ $('Create contract in AllSign').item.json.id }}",
-    "idempotencyKey": clave("allsign-hubspot-send", "$('Create contract in AllSign').item.json.id"),
+    "options": {"idempotencyKey": clave("allsign-hubspot-send", "$('Create contract in AllSign').item.json.id")},
 }, X1 + 1920, Y1, onError="continueErrorOutput", **REINTENTOS)
 
 save_sent = hs_update("Mark contract as sent", "={{ $('Prepare contract data').item.json.dealId }}", [
@@ -568,7 +570,7 @@ sticky(
 
 trig = node("Contract signed", "n8n-nodes-allsign.allsignTrigger", 1, {
     "events": ["document.completed"],
-    "endpointDescription": "n8n — HubSpot contract template",
+    "options": {"endpointDescription": "n8n — HubSpot contract template"},
 }, 0, Y2, cred={"allSignApi": ALLSIGN_CRED}, webhookId=wh("allsign-hubspot-trigger"))
 
 s2 = hs_search("Deal for this contract", [

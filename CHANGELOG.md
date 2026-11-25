@@ -2,6 +2,22 @@
 
 All notable changes to `n8n-nodes-allsign` will be documented in this file.
 
+## [0.9.0] — 2026-11-25
+
+Changes requested by n8n's review for verification.
+
+### ✨ Changed
+
+- **List Documents has Return All.** Turn it on and the node follows the pages for you until every matching document is fetched; leave it off and **Limit** applies. Each document now comes out as its own item, as with other n8n list operations, instead of one item holding the whole page.
+- **Optional fields live in collections.** Send, Void and Remind have an **Options** collection with **Idempotency Key** (all three) and **Reason** (Void). **Template Values** moved into Create's **Configuration**, and the Trigger's endpoint **Description** into its own **Options**. Only required fields stay at the top of the form.
+
+### ⚠️ Upgrading from 0.7.x or 0.8.x
+
+- If you set **Template Values**, an **Idempotency Key** on Send, Void or Remind, a **Reason**, or the Trigger **Description**, open the node and set it again in its new collection. Workflows on the verified 0.1.5 are not affected: those fields did not exist there.
+- **Starting After**, **Ending Before** and **Include Total** were removed from List Documents' filters. Use **Return All** instead of paging by hand.
+- List Documents returns one item per document. A workflow that read `data` from the list output now reads each item directly.
+- The example workflows in `examples/` use the new layout.
+
 ## [0.8.0] — 2026-11-25
 
 ### 🐛 Fixed

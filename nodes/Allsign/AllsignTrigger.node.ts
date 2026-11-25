@@ -217,13 +217,22 @@ export class AllsignTrigger implements INodeType {
 				description: 'The AllSign events that start this workflow. Loaded live from your account, so the list is never out of date. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 			{
-				displayName: 'Description',
-				name: 'endpointDescription',
-				type: 'string',
-				default: '',
-				placeholder: 'e.g. n8n — NDA automation',
-				description:
-					'Optional label for this endpoint, shown in the AllSign dashboard next to the URL. Helps tell several n8n workflows apart.',
+				displayName: 'Options',
+				name: 'options',
+				type: 'collection',
+				placeholder: 'Add Option',
+				default: {},
+				options: [
+					{
+						displayName: 'Description',
+						name: 'endpointDescription',
+						type: 'string',
+						default: '',
+						placeholder: 'e.g. n8n — NDA automation',
+						description:
+							'Label for this endpoint, shown in the AllSign dashboard next to the URL. Helps tell several n8n workflows apart.',
+					},
+				],
 			},
 		],
 	};
@@ -331,7 +340,8 @@ export class AllsignTrigger implements INodeType {
 			async create(this: IHookFunctions): Promise<boolean> {
 				const webhookUrl = this.getNodeWebhookUrl('default');
 				const events = this.getNodeParameter('events') as string[];
-				const endpointDescription = this.getNodeParameter('endpointDescription', '') as string;
+				const endpointDescription =
+					(((this.getNodeParameter('options', {}) as IDataObject).endpointDescription as string) ?? '');
 
 				if (!events.length) {
 					throw new NodeOperationError(

@@ -51,12 +51,13 @@ Signers can be reached via **email** or **WhatsApp**. Each signer can also carry
 
 ### 📑 Template Input (Source: Template)
 
-Reference an existing AllSign template by **Template ID** and fill in its variables via **Template Values** (JSON, natural variable-name keys).
+Reference an existing AllSign template by **Template ID** and fill in its variables via **Template Values** (JSON, natural variable-name keys), under **Configuration**.
 
 ### ⚙️ Additional Options
 
 | Option             | Description                                                            |
 | ------------------- | ------------------------------------------------------------------------ |
+| **Template Values** | Template variables to fill in (only with Source: Template)              |
 | **Expires At**     | Set an expiration deadline — document auto-expires after this date       |
 | **Idempotency Key**| Safely retry the create request without creating a duplicate document    |
 
@@ -68,7 +69,7 @@ Send (or resend) the signing invitation for a document that already exists.
 |:---|:---|
 | **Document ID** | The `doc_...` of the document to send (required) |
 | **Recipients** (optional) | Overrides who receives the invitation — same Delivery Method (Email/WhatsApp) shape as Signers. Leave empty to send to the signers already attached to the document |
-| **Idempotency Key** (optional) | Safely retry the send request without dispatching duplicate invitations |
+| **Options → Idempotency Key** | Safely retry the send request without dispatching duplicate invitations |
 
 > **Idempotency Key is always sent, even if you leave it empty.** The AllSign API requires a UUID v4 `Idempotency-Key` on every write. If you leave it empty, the node derives one from the execution, node, loop run and item, so n8n's own retries never duplicate a document while two Create nodes, or two loop runs, still get their own. If you set it, you can use any text (such as `order-4821`): the node turns it into a stable UUID v4. A value that is already a UUID v4 is sent as is.
 
@@ -82,12 +83,13 @@ Retrieve a document by ID — read-only, no body, no `Idempotency-Key` (doesn't 
 
 ### 📋 Operation: List Documents
 
-List documents — read-only, no body, no `Idempotency-Key`.
+List documents — read-only, no body, no `Idempotency-Key`. Each document comes out as its own item.
 
 | Field | Description |
 |:---|:---|
-| **Limit** | Max documents to return (1-100, default 50) |
-| **Filters** (optional collection) | **Status** (lifecycle), **Scope** (Owner/Organization/Tenant/Accessible), **Search** (free text), **Starting After** / **Ending Before** (pagination cursors), **Folder ID**, **Include Total** |
+| **Return All** | Fetch every matching document; the node follows the pages for you |
+| **Limit** | Max documents to return when Return All is off (1-100, default 50) |
+| **Filters** (optional collection) | **Status** (lifecycle), **Scope** (Owner/Organization/Tenant/Accessible), **Search** (free text), **Folder ID** |
 
 Only the filters you actually set are sent to the API — everything else is omitted so the API applies its own defaults (e.g. `scope=owner`).
 
@@ -116,8 +118,8 @@ Void (annul) a document. Not a delete — NOM-151 retention keeps the voided rec
 | Field | Description |
 |:---|:---|
 | **Document ID** | The `doc_...` to void (required) |
-| **Reason** (optional) | Why the document is being voided — kept in the audit log; omitted from the request if left empty |
-| **Idempotency Key** (optional) | Safely retry without double-voiding |
+| **Options → Reason** | Why the document is being voided — kept in the audit log; omitted from the request if left empty |
+| **Options → Idempotency Key** | Safely retry without double-voiding |
 
 ### 🔔 Operation: Remind Signer
 
@@ -127,7 +129,7 @@ Manually resend the signing invitation to one signer who hasn't completed yet. R
 |:---|:---|
 | **Document ID** | The `doc_...` the signer belongs to (required) |
 | **Signer ID** | The `sgr_...` to remind — get it from List Signers (required) |
-| **Idempotency Key** (optional) | Safely retry without sending a duplicate reminder |
+| **Options → Idempotency Key** | Safely retry without sending a duplicate reminder |
 
 ---
 
@@ -138,7 +140,7 @@ Starts a workflow when something happens in AllSign — a document is sent, comp
 | Field | Description |
 |:---|:---|
 | **Events** | Which events start the workflow. The list is loaded live from your account (`GET /v3/webhooks/events`), so it never goes out of date |
-| **Description** (optional) | A label shown next to the URL in the AllSign dashboard, to tell several n8n workflows apart |
+| **Options → Description** | A label shown next to the URL in the AllSign dashboard, to tell several n8n workflows apart |
 
 How it works:
 
