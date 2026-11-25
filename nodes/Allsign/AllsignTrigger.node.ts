@@ -298,12 +298,17 @@ export class AllsignTrigger implements INodeType {
 					throw new NodeApiError(this.getNode(), error as JsonObject);
 				}
 
-				// Otra URL: puede ser de otro workflow que trae esta misma static data,
-				// por ejemplo uno importado. Borrarlo dejaría al original sin recibir.
-				if (live.url !== webhookUrl) return olvidar();
+				// La ruta del webhook es única por nodo. Misma ruta en otro dominio es este
+				// mismo nodo detrás de otro túnel o dominio: se le cambia la URL al endpoint.
+				// Otra ruta puede ser otro workflow que trae esta static data, por ejemplo
+				// uno importado: borrarlo dejaría al original sin recibir.
+				const changes: IDataObject = {};
+				if (live.url !== webhookUrl) {
+					if (rutaDe(live.url) !== rutaDe(webhookUrl)) return olvidar();
+					changes.url = webhookUrl;
+				}
 
 				const events = this.getNodeParameter('events') as string[];
-				const changes: IDataObject = {};
 				if (live.status === 'disabled') {
 					// Lo apagó el circuit breaker. Reactivarlo conserva id y secreto;
 					// recrearlo los perdería y dejaría el viejo colgado.
@@ -474,6 +479,14 @@ function sameEvents(registered: unknown, wanted: string[]): boolean {
 }
 
 /** La base de la API que trae la credencial, sin diagonal final. */
+function rutaDe(url: unknown): string {
+	try {
+		return new URL(String(url)).pathname;
+	} catch {
+		return '';
+	}
+}
+
 async function resolveBaseUrl(context: IHookFunctions): Promise<string> {
 	const credentials = await context.getCredentials('allSignApi');
 	return ((credentials.baseUrl as string) || 'https://api.allsign.io').replace(/\/+$/, '');
