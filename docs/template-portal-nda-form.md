@@ -1,59 +1,41 @@
-# Automate NDA Signing with Form Input and AllSign
+# Automate NDA signing with a form and AllSign
 
-Automate your NDA workflow end-to-end: a web form collects signer details and contract terms, then AllSign creates the document from an existing **Template** (API v3) and sends the signing invitation automatically via email or WhatsApp — a single call, no separate upload/download step.
+> **Self-hosted n8n only.** This template uses the AllSign community node
+> (`n8n-nodes-allsign`), and community nodes cannot run on n8n Cloud.
 
-## What this workflow does
+![The workflow on the canvas](../screenshots/nda-form.png)
 
-1. **Form Trigger** — Collects client name, email, company, project description, effective date, confidentiality period, and jurisdiction through a web form
-2. **Map Variables** — Transforms form inputs into `templateValues` that fill in the AllSign template's variables, and builds the signer's data
-3. **AllSign: Create & Send** — Calls `POST /v3/documents` with `source: "template"`, the `templateId`, `templateValues`, and the inline signer — creating the document and sending the signing invitation in one step
+## Who's it for
 
-## Prerequisites
+Legal, sales and operations teams that send the same NDA over and over and want
+the other party to sign it from their phone, with legal weight in Mexico. AllSign
+signatures carry a NOM-151 timestamp, so the signed file stands on its own as
+evidence.
 
-- **AllSign account** with API access enabled — [Sign up at allsign.io](https://allsign.io)
-- **AllSign API Key** — Generate one from [allsign.io/developers/api-keys](https://allsign.io/developers/api-keys)
-- **An AllSign Template** — Upload `NDA_Template_AllSign.docx` (included in the [GitHub repository](https://github.com/AllSign-io/n8n-nodes-allsign/tree/main/examples)) via the AllSign dashboard's Templates section, and note its Template ID (`tmpl_...`)
+## How it works
 
-## Setup instructions
+A web form collects the client's name, email, optional WhatsApp number, company,
+project, effective date, confidentiality period and jurisdiction. The workflow
+fills your AllSign NDA template with those values and creates the document. A
+second AllSign node sends the signing invitation by WhatsApp when a number was
+given, or by email otherwise.
 
-### 1. Configure AllSign credentials
+## Requirements
 
-1. In n8n, go to **Credentials → Add Credential → AllSign API**
-2. Paste your API Key (starts with `allsign_live_sk_...` for production or `allsign_test_sk_...` for testing)
-3. Leave the Base URL as `https://api.allsign.io` (default)
-4. Click **Save** — the connection test validates your key automatically
+- Self-hosted n8n with `n8n-nodes-allsign` installed.
+- An AllSign account and API key.
+- The NDA uploaded to AllSign as a template. The repository ships one in English,
+  `examples/NDA_Template_AllSign.docx`, with its variables already in place.
 
-### 2. Create the NDA template in AllSign
+## How to set up
 
-Upload the included `NDA_Template_AllSign.docx` file via the AllSign dashboard's Templates section. This DOCX file contains variable placeholders that are automatically replaced with form values (`templateValues`):
+The sticky note on the left has the five steps: install the node, add the AllSign
+credential, upload the NDA as an AllSign template, paste its id in **Map Form to
+Template Variables** (or set the n8n variable `allsign_nda_template_id`), and
+activate the workflow to get the form URL.
 
-| Template variable | Filled from |
-|:---|:---|
-| `nombre_completo` | Client Full Name field |
-| `nombre_empresa` | Company Name field |
-| `fecha_efectiva` | Effective Date field |
-| `descripcion_proyecto` | Project Description field |
-| `periodo_confidencialidad` | Confidentiality Period dropdown |
-| `ley_aplicable` | Governing Law dropdown |
+## How to customize
 
-### 3. Set the Template ID
-
-In the **Map Form to Template Variables** node, set the `templateId` assignment to the Template ID you got in step 2 — directly, or via an n8n variable (`$vars.allsign_nda_template_id`) for easier management across environments.
-
-### 4. Activate and test
-
-1. Click **Test Workflow** to open the form in your browser
-2. Fill in the fields and submit
-3. The signer receives their invitation via email, or WhatsApp if a number was provided
-
-## Customization
-
-- **Add more signers** — Add signer entries in the AllSign node's Signers section (each needs a Delivery Method — Email or WhatsApp — and optionally a Role Name to auto-assign template variables)
-- **Change signature validations** — Enable NOM-151, FEA, Biometric Selfie, Video Signature, or ID Scan in the Signature Validations section
-- **Add expiration or idempotency** — Set an expiration date or an Idempotency Key in the Configuration section
-
-## Nodes used
-
-- [Form Trigger](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.formtrigger/) — Web form for data collection
-- [Set](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.set/) — Variable mapping
-- [AllSign](https://allsign.io) — Document creation and e-signature (API v3)
+Add form fields and template variables, add a second signer for your own company,
+or turn on extra validations in the Create node such as biometric selfie, ID scan
+or video signature.
