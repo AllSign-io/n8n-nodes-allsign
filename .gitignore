@@ -1,6 +1,6 @@
 dist
 node_modules
-screenshots
+screenshots/*
 !screenshots/hubspot-every-5-minutes.png
 !screenshots/hubspot-real-time.png
 !screenshots/nda-form.png
