@@ -17,7 +17,7 @@
     {
       "parameters": {
         "content": "## 💡 Tips\n\n- **Template Values** must match the variable names in the template: `client_name`, `company_name`, `effective_date`, `project_description`, `confidentiality_period` and `governing_law` in `NDA_Template_AllSign.docx`. A name that doesn't match is left unfilled.\n- **WhatsApp** is optional: the invitation goes by WhatsApp only when a number is given, otherwise by email.\n- **Role Name** (`client`) assigns template variables tagged with that role to this signer.\n- **Signature Validations** can be changed in the Create node: Handwritten, NOM-151, FEA, Biometric Selfie, ID Scan and Video Signature.",
-        "height": 360,
+        "height": 420,
         "width": 380,
         "color": 3
       },
